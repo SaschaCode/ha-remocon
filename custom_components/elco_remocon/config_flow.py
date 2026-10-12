@@ -13,6 +13,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .api import RemoconAuthError, RemoconClient, RemoconConnectionError, RemoconDataError
 from .const import CONF_GATEWAY_ID, CONF_ZONE, DEFAULT_ZONE, DOMAIN
+from .identifiers import config_entry_unique_id, has_gateway_zone_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +53,21 @@ class ElcoRemoconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception during setup: %s", err)
                 errors["base"] = "no_data"
             else:
-                await self.async_set_unique_id(user_input[CONF_GATEWAY_ID])
+                gateway_id = user_input[CONF_GATEWAY_ID]
+                zone = user_input.get(CONF_ZONE, DEFAULT_ZONE)
+                await self.async_set_unique_id(
+                    config_entry_unique_id(gateway_id, zone)
+                )
                 self._abort_if_unique_id_configured()
+                # Older releases used only the gateway ID as the config entry
+                # unique ID. Check their stored zone before allowing a second
+                # entry for the same gateway and zone.
+                if has_gateway_zone_entry(
+                    self._async_current_entries(), gateway_id, zone
+                ):
+                    return self.async_abort(reason="already_configured")
                 return self.async_create_entry(
-                    title=f"Elco {user_input[CONF_GATEWAY_ID]}",
+                    title=f"Elco {gateway_id} (Zone {zone})",
                     data=user_input,
                 )
 

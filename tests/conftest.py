@@ -25,6 +25,36 @@ ha.__path__ = []  # mark as a package
 config_entries = _module("homeassistant.config_entries")
 config_entries.ConfigEntry = type("ConfigEntry", (), {})
 
+
+class _ConfigFlow:
+    """Small stand-in for the config flow base used by unit tests."""
+
+    def __init_subclass__(cls, *, domain=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+    async def async_set_unique_id(self, unique_id):
+        self.unique_id = unique_id
+
+    def _abort_if_unique_id_configured(self):
+        return None
+
+    def _async_current_entries(self):
+        return getattr(self, "entries", [])
+
+    def async_abort(self, *, reason):
+        return {"type": "abort", "reason": reason}
+
+    def async_create_entry(self, *, title, data):
+        return {
+            "type": "create_entry",
+            "title": title,
+            "data": data,
+            "unique_id": self.unique_id,
+        }
+
+
+config_entries.ConfigFlow = _ConfigFlow
+
 const = _module("homeassistant.const")
 const.CONF_EMAIL = "email"
 const.CONF_PASSWORD = "password"
@@ -37,6 +67,11 @@ core.HomeAssistant = type("HomeAssistant", (), {})
 
 data_entry_flow = _module("homeassistant.data_entry_flow")
 data_entry_flow.FlowResult = dict
+
+vol = _module("voluptuous")
+vol.Schema = lambda schema: schema
+vol.Required = lambda key, **kwargs: key
+vol.Optional = lambda key, **kwargs: key
 
 helpers = _module("homeassistant.helpers")
 helpers.__path__ = []

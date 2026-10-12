@@ -65,6 +65,12 @@ Restart Home Assistant.
    https://www.remocon-net.remotethermo.com/R2/Plant/Index/A1B2C3D4E5F6
    ```
 
+The **Gateway ID** is the identifier in this URL. It is not the heat pump's serial number.
+
+### Multiple heating zones
+
+Add the integration once for each heating zone. Use the same Remocon-Net account and Gateway ID each time, and enter a different **Zone** value (for example, `1` and `2`). Zone 1 keeps the existing entity unique IDs; entities for other zones receive zone-specific unique IDs. Each setup creates a separate climate entity and its zone's sensors.
+
 ## Entities
 
 After setup, the following entities are created:

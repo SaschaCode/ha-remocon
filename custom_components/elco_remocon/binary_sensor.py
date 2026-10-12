@@ -16,8 +16,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import RemoconData
-from .const import DOMAIN
+from .const import CONF_ZONE, DEFAULT_ZONE, DOMAIN
 from .coordinator import ElcoRemoconCoordinator
+from .identifiers import entity_unique_id
 
 
 @dataclass(kw_only=True)
@@ -66,9 +67,10 @@ async def async_setup_entry(
     """Set up Elco binary sensors."""
     coordinator: ElcoRemoconCoordinator = hass.data[DOMAIN][entry.entry_id]
     gw_id = entry.data["gateway_id"]
+    zone = entry.data.get(CONF_ZONE, DEFAULT_ZONE)
 
     entities = [
-        ElcoBinarySensor(coordinator, gw_id, desc)
+        ElcoBinarySensor(coordinator, gw_id, zone, desc)
         for desc in BINARY_SENSORS
         if desc.exists_fn(coordinator.data)
     ]
@@ -85,11 +87,12 @@ class ElcoBinarySensor(CoordinatorEntity[ElcoRemoconCoordinator], BinarySensorEn
         self,
         coordinator: ElcoRemoconCoordinator,
         gw_id: str,
+        zone: str,
         description: ElcoBinarySensorDescription,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{gw_id}_{description.key}"
+        self._attr_unique_id = entity_unique_id(gw_id, zone, description.key)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},
             "name": "Remocon-Net Heat Pump",
