@@ -41,6 +41,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up Elco climate entity."""
     coordinator: ElcoRemoconCoordinator = hass.data[DOMAIN][entry.entry_id]
+    if coordinator.client.is_flat_api:
+        _LOGGER.info(
+            "Skipping climate entity for gateway %s because flat R2 controls are unverified",
+            entry.data["gateway_id"],
+        )
+        return
     async_add_entities([ElcoClimateEntity(coordinator, entry)])
 
 

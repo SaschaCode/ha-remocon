@@ -28,7 +28,7 @@ class ElcoBinarySensorDescription(BinarySensorEntityDescription):
     key: str
     translation_key: str
     device_class: BinarySensorDeviceClass | None = None
-    value_fn: Callable[[RemoconData], bool]
+    value_fn: Callable[[RemoconData], bool | None]
     exists_fn: Callable[[RemoconData], bool] = lambda _: True
 
 

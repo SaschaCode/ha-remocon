@@ -71,6 +71,8 @@ The **Gateway ID** is the identifier in this URL. It is not the heat pump's seri
 
 Add the integration once for each heating zone. Use the same Remocon-Net account and Gateway ID each time, and enter a different **Zone** value (for example, `1` and `2`). Zone 1 keeps the existing entity unique IDs; entities for other zones receive zone-specific unique IDs. Each setup creates a separate climate entity and its zone's sensors.
 
+Some newer gateways use a flat R2 data format. These gateways are currently read-only and do not receive a climate entity; temperature and mode controls are not available.
+
 ## Entities
 
 After setup, the following entities are created:
