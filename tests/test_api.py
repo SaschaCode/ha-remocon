@@ -159,6 +159,7 @@ def test_http_200_flat_response_is_detected_and_mapped():
     assert data.zone_mode == 3
     assert data.outside_temp == -4.5
     assert data.dhw_temp == 48
+    assert data.dhw_boost_available is False
     assert data.heat_pump_on is True
     assert client._flat_api is True
 

@@ -71,6 +71,27 @@ def test_dhw_reduced_temperature_writes_expected_endpoint():
     assert_save_call(request, "/R2/PlantDhw/Save/GW123", "DhwTimeProgEconomyTemp", 42)
 
 
+def test_dhw_comfort_temperature_allows_gateways_without_boost_item():
+    client = make_client()
+    items_without_boost = {
+        item_id: item
+        for item_id, item in ITEMS.items()
+        if item_id != "IsDhwBoost"
+    }
+    with patch.object(client, "_get_flat_raw", return_value=items_without_boost), patch.object(
+        client, "_confirm_write"
+    ), patch.object(client, "_request") as request:
+        client.set_dhw_comfort_temperature(52)
+
+    payload = request.call_args.kwargs["json"]
+    assert {item["itemId"] for item in payload["requestItems"]} == {
+        "DhwTimeProgComfortTemp",
+        "DhwTimeProgEconomyTemp",
+        "DhwMode",
+        "DhwStorageTemperature",
+    }
+
+
 def test_mode_and_switch_writes_use_flat_endpoints():
     client = make_client()
     with patch.object(client, "_get_flat_raw", return_value=ITEMS), patch.object(

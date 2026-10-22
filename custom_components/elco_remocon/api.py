@@ -72,13 +72,16 @@ FLAT_RELEVANT_ITEM_IDS = {
     "IsDhwBoost", "IsQuite", "PlantMode",
 }
 
-DHW_WRITE_ITEM_IDS = (
+DHW_WRITE_REQUIRED_ITEM_IDS = (
     "DhwTimeProgComfortTemp",
     "DhwTimeProgEconomyTemp",
     "DhwMode",
     "DhwStorageTemperature",
+)
+DHW_WRITE_OPTIONAL_ITEM_IDS = (
     "IsDhwBoost",
 )
+DHW_WRITE_ITEM_IDS = DHW_WRITE_REQUIRED_ITEM_IDS + DHW_WRITE_OPTIONAL_ITEM_IDS
 
 
 class RemoconApiError(Exception):
@@ -122,6 +125,7 @@ class RemoconData:
     dhw_mode: int = 0
     dhw_enabled: bool = False
     dhw_boost: bool = False
+    dhw_boost_available: bool = False
     dhw_comfort_temp_min: float = 35.0
     dhw_comfort_temp_max: float = 65.0
     dhw_comfort_temp_step: float = 1.0
@@ -518,6 +522,7 @@ class RemoconClient:
             dhw_mode=dhw_mode_val,
             dhw_enabled=dhw_mode_val > 0,
             dhw_boost=dhw_boost,
+            dhw_boost_available="IsDhwBoost" in items,
             dhw_comfort_temp_min=dhw_comf_min,
             dhw_comfort_temp_max=dhw_comf_max,
             dhw_comfort_temp_step=dhw_comf_step,
@@ -659,15 +664,27 @@ class RemoconClient:
         self, items: dict[str, Any], item_id: str, new_value: Any
     ) -> dict[str, Any]:
         """Build the verified PlantDhw Save contract used by the web app."""
-        missing = [item_id for item_id in DHW_WRITE_ITEM_IDS if item_id not in items]
+        missing = [
+            required_id
+            for required_id in DHW_WRITE_REQUIRED_ITEM_IDS
+            if required_id not in items
+        ]
         if missing:
             raise RemoconDataError(
                 f"DHW write prerequisites are missing: {', '.join(missing)}"
             )
+        if item_id not in items:
+            raise RemoconDataError(
+                f"DHW item is not available on this gateway: {item_id}"
+            )
+
+        write_item_ids = tuple(
+            current_id for current_id in DHW_WRITE_ITEM_IDS if current_id in items
+        )
 
         previous_items: list[dict[str, Any]] = []
         request_items: list[dict[str, Any]] = []
-        for current_id in DHW_WRITE_ITEM_IDS:
+        for current_id in write_item_ids:
             source = items[current_id]
             previous_items.append({
                 "id": current_id,
