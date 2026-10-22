@@ -133,7 +133,7 @@ class ElcoSensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity):
         self._attr_unique_id = entity_unique_id(gw_id, zone, description.key)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},
-            "name": "Elco Remocon-Net Controls",
+            "name": "Remocon-Net Heat Pump",
             "manufacturer": "Elco",
             "model": "Aerotop SPK",
         }

@@ -138,7 +138,7 @@ class ElcoSelect(CoordinatorEntity[ElcoRemoconCoordinator], SelectEntity):
         self._attr_options = description.options
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},
-            "name": "Elco Remocon-Net Controls",
+            "name": "Remocon-Net Heat Pump",
             "manufacturer": "Elco",
             "model": "Aerotop SPK",
         }

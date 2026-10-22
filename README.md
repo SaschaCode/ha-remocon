@@ -1,9 +1,9 @@
-# Elco Remocon-Net Controls
+# ha-remocon
 
-**Home Assistant integration for Elco heat pumps via the Remocon-Net cloud service, with write controls for Aerotop MONO systems.**
+**Unofficial Home Assistant integration for Elco heat pumps via the Remocon-Net cloud service.**
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=SaschaCode&repository=ha-remocon&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=macschlingel&repository=ha-remocon&category=integration)
 
 Control and monitor your Elco heat pump (e.g. Aerotop SPK) through the Remocon-Net cloud API — directly in Home Assistant, no MQTT or AppDaemon needed.
 
@@ -36,7 +36,7 @@ Control and monitor your Elco heat pump (e.g. Aerotop SPK) through the Remocon-N
 3. Add:
    - **URL:** `https://github.com/macschlingel/ha-remocon`
    - **Category:** Integration
-4. Search for **"Elco Remocon-Net Controls"** in HACS and install
+4. Search for **"Remocon-Net"** in HACS and install
 5. Restart Home Assistant
 
 ### Manual
@@ -53,7 +53,7 @@ Restart Home Assistant.
 ## Configuration
 
 1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **"Elco Remocon-Net Controls"**
+2. Search for **"Remocon-Net"**
 3. Enter your credentials:
    - **Email:** Your Remocon-Net login email
    - **Password:** Your Remocon-Net login password

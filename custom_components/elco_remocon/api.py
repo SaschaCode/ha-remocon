@@ -72,6 +72,14 @@ FLAT_RELEVANT_ITEM_IDS = {
     "IsDhwBoost", "IsQuite", "PlantMode",
 }
 
+DHW_WRITE_ITEM_IDS = (
+    "DhwTimeProgComfortTemp",
+    "DhwTimeProgEconomyTemp",
+    "DhwMode",
+    "DhwStorageTemperature",
+    "IsDhwBoost",
+)
+
 
 class RemoconApiError(Exception):
     """Base exception for API errors."""
@@ -283,10 +291,11 @@ class RemoconClient:
             raise RemoconDataError("Flat R2 response contains no valid data items")
         return mapped
 
-    def _get_flat_raw(self) -> dict[str, Any]:
+    def _get_flat_raw(self, *, use_cache: bool = True) -> dict[str, Any]:
         """Fetch the flat R2 data format, caching the protocol after success."""
         essentials = self._get_flat_item_call(
-            {"notEssentials": False, "plant": True, "zone": True, "dhw": True}
+            {"notEssentials": False, "plant": True, "zone": True, "dhw": True},
+            use_cache=use_cache,
         )
         has_relevant_value = any(
             item_id in essentials
@@ -308,20 +317,22 @@ class RemoconClient:
                 "plant": False,
                 "progId": 9,
                 "zone": False,
-            }))
+            }, use_cache=use_cache))
         except (RemoconConnectionError, RemoconDataError) as err:
             # Status-only items are useful but optional. In particular, an
             # outage here must not prevent initial setup or essential polling.
             _LOGGER.debug("Could not fetch optional flat R2 status items: %s", err)
         return items
 
-    def _get_flat_item_call(self, filter_data: dict[str, Any]) -> dict[str, Any]:
+    def _get_flat_item_call(
+        self, filter_data: dict[str, Any], *, use_cache: bool = True
+    ) -> dict[str, Any]:
         """Fetch and index one group of flat R2 data items."""
         response = self._request(
             "POST",
             f"/R2/PlantHome/GetData/{self._gateway_id}",
             json={
-                "useCache": True,
+                "useCache": use_cache,
                 "zone": int(self._zone),
                 "filter": filter_data,
                 "features": {
@@ -627,7 +638,65 @@ class RemoconClient:
             raise RemoconDataError(
                 "Flat R2 write requires a flat R2 gateway"
             )
-        return self._get_flat_raw()
+        return self._get_flat_raw(use_cache=False)
+
+    def _flat_features(self) -> dict[str, Any]:
+        """Build the gateway-specific feature profile used by R2 writes."""
+        return {
+            **FLAT_FEATURES_PAYLOAD,
+            "gatewayId": self._gateway_id,
+            "zones": [{
+                "num": int(self._zone),
+                "name": "Zone",
+                "roomSens": False,
+                "geofenceDeroga": True,
+                "virtInfo": None,
+                "isHidden": False,
+            }],
+        }
+
+    def _build_dhw_save_payload(
+        self, items: dict[str, Any], item_id: str, new_value: Any
+    ) -> dict[str, Any]:
+        """Build the verified PlantDhw Save contract used by the web app."""
+        missing = [item_id for item_id in DHW_WRITE_ITEM_IDS if item_id not in items]
+        if missing:
+            raise RemoconDataError(
+                f"DHW write prerequisites are missing: {', '.join(missing)}"
+            )
+
+        previous_items: list[dict[str, Any]] = []
+        request_items: list[dict[str, Any]] = []
+        for current_id in DHW_WRITE_ITEM_IDS:
+            source = items[current_id]
+            previous_items.append({
+                "id": current_id,
+                "gatewayId": self._gateway_id,
+                "value": source.get("value"),
+                "zone": source.get("zone", 0),
+                "kind": source.get("kind"),
+                "unit": source.get("unit"),
+                "min": source.get("min"),
+                "max": source.get("max"),
+                "step": source.get("step"),
+                "decimals": source.get("decimals"),
+                "options": source.get("options") or [],
+                "optTexts": source.get("optTexts") or [],
+                "readOnly": bool(source.get("readOnly")),
+                "error": bool(source.get("error")),
+                "invalid": bool(source.get("invalid")),
+                "expiresOn": source.get("expiresOn"),
+            })
+            request_items.append({
+                "itemId": current_id,
+                "value": new_value if current_id == item_id else source.get("value"),
+            })
+
+        return {
+            "requestItems": request_items,
+            "prevDataItems": previous_items,
+            "features": self._flat_features(),
+        }
 
     @staticmethod
     def _build_save_payload(
@@ -674,9 +743,14 @@ class RemoconClient:
         write_id: str | None = None,
     ) -> None:
         """POST to /R2/{section}/Save/{gw} with requestItems/prevDataItems."""
-        payload = self._build_save_payload(items, item_id, new_value, write_id)
+        if section == "PlantDhw":
+            payload = self._build_dhw_save_payload(items, item_id, new_value)
+        else:
+            payload = self._build_save_payload(items, item_id, new_value, write_id)
         path = f"/R2/{section}/Save/{self._gateway_id}"
-        self._request("POST", path, json=payload)
+        response = self._request("POST", path, json=payload)
+        if isinstance(response, dict) and not response.get("ok", True):
+            raise RemoconDataError("Remocon-Net rejected the write request")
 
     def _validate_temperature(
         self, value: float, min_temp: float, max_temp: float, step: float, name: str

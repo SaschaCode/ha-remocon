@@ -31,12 +31,24 @@ def assert_save_call(request, endpoint: str, item_id: str, value):
     assert request.call_args.args[0] == "POST"
     assert request.call_args.args[1] == endpoint
     payload = request.call_args.kwargs["json"]
-    changed = next(item for item in payload["requestItems"] if item["id"] == item_id)
+    request_key = "itemId" if endpoint.endswith("/PlantDhw/Save/GW123") else "id"
+    changed = next(item for item in payload["requestItems"] if item[request_key] == item_id)
     assert changed["value"] == value
     assert {item["id"] for item in payload["prevDataItems"]} >= {
         item_id,
         "DhwStorageTemperature",
     }
+    if endpoint.endswith("/PlantDhw/Save/GW123"):
+        assert len(payload["requestItems"]) == 5
+        assert {item["itemId"] for item in payload["requestItems"]} == {
+            "DhwTimeProgComfortTemp",
+            "DhwTimeProgEconomyTemp",
+            "DhwMode",
+            "DhwStorageTemperature",
+            "IsDhwBoost",
+        }
+        assert payload["features"]["gatewayId"] == "GW123"
+        assert all(item["gatewayId"] == "GW123" for item in payload["prevDataItems"])
 
 
 def test_dhw_comfort_temperature_writes_and_preserves_siblings():

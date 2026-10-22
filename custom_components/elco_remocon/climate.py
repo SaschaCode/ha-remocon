@@ -73,7 +73,7 @@ class ElcoClimateEntity(CoordinatorEntity[ElcoRemoconCoordinator], ClimateEntity
         self._attr_unique_id = f"{gw_id}_climate_zone_{entry.data.get('zone', '1')}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},
-            "name": "Elco Remocon-Net Controls",
+            "name": "Remocon-Net Heat Pump",
             "manufacturer": "Elco",
             "model": "Aerotop SPK",
         }
