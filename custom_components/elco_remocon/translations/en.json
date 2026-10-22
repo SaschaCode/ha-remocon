@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Remocon-Net (unofficial)",
-        "description": "Unofficial integration — connect your Elco heat pump via the Remocon-Net Cloud.",
+        "title": "Elco Remocon-Net Controls",
+        "description": "Connect your Elco heat pump to Home Assistant with temperature and mode controls.",
         "data": {
           "email": "Email",
           "password": "Password",

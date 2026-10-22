@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Remocon-Net (inoffiziell)",
-        "description": "Inoffizielle Integration — verbinde deine Elco Wärmepumpe über die Remocon-Net Cloud.",
+        "title": "Elco Remocon-Net Steuerung",
+        "description": "Verbinde deine Elco Wärmepumpe mit Home Assistant und steuere Temperaturen und Betriebsarten.",
         "data": {
           "email": "E-Mail",
           "password": "Passwort",

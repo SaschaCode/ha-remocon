@@ -1,6 +1,6 @@
 {
   "domain": "elco_remocon",
-  "name": "Remocon-Net (unofficial)",
+  "name": "Elco Remocon-Net Controls",
   "codeowners": ["@bastian"],
   "config_flow": true,
   "documentation": "https://github.com/macschlingel/ha-remocon",
