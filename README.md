@@ -12,6 +12,9 @@ Control and monitor your Elco heat pump (e.g. Aerotop SPK) through the Remocon-N
 ## Features
 
 - **Climate entity** — Set target temperature, switch operation mode (Auto / Heat / Off), presets (Comfort / Reduced)
+- **DHW controls** — Water heater, comfort and reduced temperature numbers, DHW mode, and boost switch
+- **Zone controls** — Comfort and reduced temperature numbers and zone mode
+- **Plant controls** — Plant mode select and quiet mode switch
 - **Sensors** — Outside temperature, flow temperature, target temperature, system pressure
 - **Binary sensors** — Heating active, cooling active, heat pump running
 - **Config flow** — Easy setup directly in the Home Assistant UI
@@ -71,7 +74,7 @@ The **Gateway ID** is the identifier in this URL. It is not the heat pump's seri
 
 Add the integration once for each heating zone. Use the same Remocon-Net account and Gateway ID each time, and enter a different **Zone** value (for example, `1` and `2`). Zone 1 keeps the existing entity unique IDs; entities for other zones receive zone-specific unique IDs. Each setup creates a separate climate entity and its zone's sensors.
 
-Some newer gateways use a flat R2 data format. These gateways are currently read-only and do not receive a climate entity; temperature and mode controls are not available.
+Some newer gateways use a flat R2 data format. Flat R2 gateways expose the verified write controls listed below. The legacy climate entity remains available for the older v2 API.
 
 ## Entities
 
@@ -88,6 +91,16 @@ After setup, the following entities are created:
 | `binary_sensor.heating_active` | Binary | Heating is active |
 | `binary_sensor.cooling_active` | Binary | Cooling is active |
 | `binary_sensor.heat_pump_on` | Binary | Heat pump is running |
+| `water_heater.dhw_water_heater` | Water heater | DHW target temperature and operation mode |
+| `number.dhw_comfort_temperature` | Number | DHW comfort setpoint |
+| `number.dhw_reduced_temperature` | Number | DHW reduced setpoint |
+| `number.zone_comfort_temperature` | Number | Zone comfort setpoint |
+| `number.zone_reduced_temperature` | Number | Zone reduced setpoint |
+| `select.dhw_mode` | Select | DHW disabled, timed, or continuous |
+| `select.zone_mode` | Select | Zone off, manual, or time program |
+| `select.plant_mode` | Select | Summer, winter, heating, cooling, or off |
+| `switch.dhw_boost` | Switch | Enable rapid DHW heating |
+| `switch.quiet_mode` | Switch | Enable quiet operation |
 
 ### Climate entity
 
@@ -129,7 +142,7 @@ python3 remocon.py --config-file config.json status --json
 - **Cloud-dependent:** Control goes through the Remocon-Net cloud. No control possible during internet outages.
 - **Polling:** Data is fetched every 2 minutes (no real-time streaming).
 - **No room sensor:** If no room thermostat is connected, `current_temperature` shows the target value.
-- **DHW read-only:** Domestic hot water entities are displayed, but DHW control is not yet available through the HA entity (works via CLI).
+- **Flat-R2 verification scope:** Time programs, buffer temperatures, and advanced menu parameters remain read-only until their web-app write payloads are reverse-engineered.
 
 ## Technical details
 
@@ -137,7 +150,7 @@ The integration uses the same API as the Elco Remocon-Net web app:
 
 - **Login:** Cookie-based authentication via `/R2/Account/Login`
 - **Data:** R2 Web API (`/R2/PlantHome/GetData/`, falling back to `/R2/PlantHomeBsb/GetData/` for BSB-bus systems such as Aerotop/Aquatop, which 500 on the non-BSB path) + v2 REST API (`/api/v2/remote/dataItems/`)
-- **Control:** v2 REST API (`/api/v2/remote/bsbZones/`, `/api/v2/remote/bsbPlantData/`)
+- **Control:** v2 REST API for legacy systems; flat R2 `PlantDhw`, `PlantZone`, and `PlantMenu` save endpoints for Aerotop MONO systems
 - **Platform:** remotethermo.com (Ariston Thermo Group)
 
 ## Contributing

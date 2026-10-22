@@ -69,6 +69,7 @@ FLAT_RELEVANT_ITEM_IDS = {
     "ZoneMode", "ZoneHeatRequest", "OutsideTemp", "DhwStorageTemperature",
     "DhwTimeProgComfortTemp", "DhwTimeProgEconomyTemp", "DhwMode",
     "IsHeatingPumpOn", "HeatingCircuitPressure", "ChFlowSetpointTemp",
+    "IsDhwBoost", "IsQuite", "PlantMode",
 }
 
 
@@ -112,6 +113,18 @@ class RemoconData:
     dhw_reduced_temp: float = 0.0
     dhw_mode: int = 0
     dhw_enabled: bool = False
+    dhw_boost: bool = False
+    dhw_comfort_temp_min: float = 35.0
+    dhw_comfort_temp_max: float = 65.0
+    dhw_comfort_temp_step: float = 1.0
+    dhw_reduced_temp_min: float = 30.0
+    dhw_reduced_temp_max: float = 55.0
+    dhw_reduced_temp_step: float = 1.0
+    dhw_mode_text: str = ""
+    plant_mode: int = -1
+    plant_mode_text: str = ""
+    quiet_mode: bool = False
+    zone_mode_text: str = ""
     heat_pump_on: bool | None = False
     flame_sensor: bool = False
     # System (from v2 API)
@@ -439,6 +452,40 @@ class RemoconClient:
         else:
             heating_active = request and plant_mode != 3
             cooling_active = request and plant_mode == 3
+        # DHW mode texts
+        dhw_mode_val = int(number("DhwMode"))
+        dhw_mode_map = {0: "disabled", 1: "timed", 2: "continuous"}
+        dhw_mode_text = dhw_mode_map.get(dhw_mode_val, "")
+
+        # DHW boost flag
+        dhw_boost = boolean("IsDhwBoost")
+
+        # Quiet mode flag
+        quiet_mode = boolean("IsQuite")
+
+        # DHW temp bounds from items
+        dhw_comf_min = number("DhwTimeProgComfortTemp", 35.0, "min")
+        dhw_comf_max = number("DhwTimeProgComfortTemp", 65.0, "max")
+        dhw_comf_step = number("DhwTimeProgComfortTemp", 1.0, "step")
+        dhw_red_min = number("DhwTimeProgEconomyTemp", 30.0, "min")
+        dhw_red_max = number("DhwTimeProgEconomyTemp", 55.0, "max")
+        dhw_red_step = number("DhwTimeProgEconomyTemp", 1.0, "step")
+
+        # Zone mode text
+        zone_mode_texts = [str(x) for x in opts] if isinstance(opts, list) else []
+        zone_mode_text = (
+            zone_mode_texts[mode]
+            if isinstance(mode, int) and 0 <= mode < len(zone_mode_texts)
+            else ""
+        )
+
+        # Plant mode text
+        plant_mode_map = {
+            0: "summer", 1: "winter", 2: "heating_only",
+            3: "cooling", 5: "off",
+        }
+        plant_mode_text = plant_mode_map.get(plant_mode, "")
+
         return RemoconData(
             comfort_temp=number("ZoneComfortTemp"),
             comfort_temp_min=number("ZoneComfortTemp", 5.0, "min"),
@@ -448,7 +495,8 @@ class RemoconClient:
             desired_temp=number("ZoneDesiredTemp"),
             room_temp=number("ZoneMeasuredTemp"),
             zone_mode=mode,
-            zone_mode_texts=[str(x) for x in opts] if isinstance(opts, list) else [],
+            zone_mode_texts=zone_mode_texts,
+            zone_mode_text=zone_mode_text,
             heating_active=heating_active,
             cooling_active=cooling_active,
             heat_or_cool_request=request,
@@ -456,8 +504,19 @@ class RemoconClient:
             dhw_temp=number("DhwStorageTemperature"),
             dhw_comfort_temp=number("DhwTimeProgComfortTemp"),
             dhw_reduced_temp=number("DhwTimeProgEconomyTemp"),
-            dhw_mode=int(number("DhwMode")),
-            dhw_enabled=bool(int(number("DhwMode"))),
+            dhw_mode=dhw_mode_val,
+            dhw_enabled=dhw_mode_val > 0,
+            dhw_boost=dhw_boost,
+            dhw_comfort_temp_min=dhw_comf_min,
+            dhw_comfort_temp_max=dhw_comf_max,
+            dhw_comfort_temp_step=dhw_comf_step,
+            dhw_reduced_temp_min=dhw_red_min,
+            dhw_reduced_temp_max=dhw_red_max,
+            dhw_reduced_temp_step=dhw_red_step,
+            dhw_mode_text=dhw_mode_text,
+            plant_mode=plant_mode,
+            plant_mode_text=plant_mode_text,
+            quiet_mode=quiet_mode,
             heat_pump_on=(
                 boolean("IsHeatingPumpOn") if pump_value is not None else None
             ),
@@ -553,6 +612,278 @@ class RemoconClient:
             raise RemoconDataError(
                 "Control is disabled because this gateway uses the unverified flat R2 API"
             )
+
+    # ------------------------------------------------------------------
+    # Flat R2 write methods (Aerotop MONO and similar gateways)
+    # Based on PR #11 (markuszytek) and PR #13 (Mapfi891) patterns.
+    # ------------------------------------------------------------------
+
+    def _get_flat_items_cached(self) -> dict[str, Any]:
+        """Fetch current flat R2 items for building write payloads."""
+        if not self._flat_api:
+            # Ensure we know the protocol before writing
+            self._get_raw()
+        if not self._flat_api:
+            raise RemoconDataError(
+                "Flat R2 write requires a flat R2 gateway"
+            )
+        return self._get_flat_raw()
+
+    @staticmethod
+    def _build_save_payload(
+        items: dict[str, Any],
+        item_id: str,
+        new_value: Any,
+        write_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build a PlantDhw/PlantZone Save payload preserving sibling items.
+
+        Constructs requestItems with the changed item and prevDataItems with
+        all sibling items from the same group, as the R2 web app does.
+        """
+        target = items.get(item_id, {})
+        if not isinstance(target, dict):
+            target = {}
+
+        # Build requestItems: the item being changed
+        request_item = dict(target)
+        request_item["value"] = new_value
+        if write_id is not None:
+            request_item["writeId"] = write_id
+
+        # Build prevDataItems: all sibling items in the same group
+        prev_items = []
+        for iid, item in items.items():
+            if not isinstance(item, dict):
+                continue
+            item_copy = dict(item)
+            item_copy["value"] = item.get("value")
+            prev_items.append(item_copy)
+
+        return {
+            "requestItems": [request_item],
+            "prevDataItems": prev_items,
+        }
+
+    def _flat_save(
+        self,
+        section: str,
+        items: dict[str, Any],
+        item_id: str,
+        new_value: Any,
+        write_id: str | None = None,
+    ) -> None:
+        """POST to /R2/{section}/Save/{gw} with requestItems/prevDataItems."""
+        payload = self._build_save_payload(items, item_id, new_value, write_id)
+        path = f"/R2/{section}/Save/{self._gateway_id}"
+        self._request("POST", path, json=payload)
+
+    def _validate_temperature(
+        self, value: float, min_temp: float, max_temp: float, step: float, name: str
+    ) -> float:
+        """Validate a temperature value against min/max/step constraints."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise RemoconDataError(f"{name} must be a number, got {type(value).__name__}")
+        value = float(value)
+        if value < min_temp or value > max_temp:
+            raise RemoconDataError(
+                f"{name} {value} out of range [{min_temp}, {max_temp}]"
+            )
+        steps = round((value - min_temp) / step)
+        if abs(value - (min_temp + steps * step)) > 1e-9:
+            raise RemoconDataError(f"{name} must use increments of {step}")
+        return round(value, 2)
+
+    def set_dhw_comfort_temperature(self, value: float) -> None:
+        """Set DHW comfort temperature (35-65°C, whole degrees)."""
+        if not self._flat_api:
+            self.set_dhw_temperature(comfort=value)
+            return
+        items = self._get_flat_items_cached()
+        item = items.get("DhwTimeProgComfortTemp", {})
+        min_t = float(item.get("min", 35)) if isinstance(item, dict) else 35.0
+        max_t = float(item.get("max", 65)) if isinstance(item, dict) else 65.0
+        step_t = float(item.get("step", 1)) if isinstance(item, dict) else 1.0
+
+        validated = self._validate_temperature(value, min_t, max_t, step_t, "DHW comfort temperature")
+        self._flat_save("PlantDhw", items, "DhwTimeProgComfortTemp", int(validated))
+        # Confirm with uncached re-read
+        self._confirm_write("DhwTimeProgComfortTemp", int(validated))
+
+    def set_dhw_reduced_temperature(self, value: float) -> None:
+        """Set DHW reduced (economy) temperature (30-55°C, whole degrees)."""
+        if not self._flat_api:
+            self.set_dhw_temperature(reduced=value)
+            return
+        items = self._get_flat_items_cached()
+        item = items.get("DhwTimeProgEconomyTemp", {})
+        min_t = float(item.get("min", 30)) if isinstance(item, dict) else 30.0
+        max_t = float(item.get("max", 55)) if isinstance(item, dict) else 55.0
+        step_t = float(item.get("step", 1)) if isinstance(item, dict) else 1.0
+
+        validated = self._validate_temperature(value, min_t, max_t, step_t, "DHW reduced temperature")
+        self._flat_save("PlantDhw", items, "DhwTimeProgEconomyTemp", int(validated))
+        self._confirm_write("DhwTimeProgEconomyTemp", int(validated))
+
+    def set_dhw_mode(self, mode: int) -> None:
+        """Set DHW mode: 0=disabled, 1=timed, 2=continuous."""
+        if mode not in (0, 1, 2):
+            raise RemoconDataError(f"Invalid DHW mode: {mode}. Must be 0, 1, or 2.")
+        if not self._flat_api:
+            self._get_raw()
+            self._require_legacy_write_api()
+            path = f"/api/v2/remote/bsbPlantData/{self._gateway_id}/dhwMode"
+            self._request("POST", path, json={"new": mode})
+            return
+        items = self._get_flat_items_cached()
+        self._flat_save("PlantDhw", items, "DhwMode", mode)
+        self._confirm_write("DhwMode", mode)
+
+    def set_dhw_boost(self, enable: bool) -> None:
+        """Enable or disable DHW boost (rapid heating)."""
+        items = self._get_flat_items_cached()
+        value = 1 if enable else 0
+        self._flat_save("PlantDhw", items, "IsDhwBoost", value)
+        self._confirm_write("IsDhwBoost", value)
+
+    def set_zone_comfort_temperature(self, value: float) -> None:
+        """Set zone comfort temperature."""
+        if not self._flat_api:
+            self.set_zone_temperatures(comfort=value)
+            return
+        items = self._get_flat_items_cached()
+        item = items.get("ZoneComfortTemp", {})
+        min_t = float(item.get("min", 5)) if isinstance(item, dict) else 5.0
+        max_t = float(item.get("max", 35)) if isinstance(item, dict) else 35.0
+        step_t = float(item.get("step", 0.5)) if isinstance(item, dict) else 0.5
+
+        validated = self._validate_temperature(value, min_t, max_t, step_t, "Zone comfort temperature")
+        self._flat_save("PlantZone", items, "ZoneComfortTemp", validated)
+        self._confirm_write("ZoneComfortTemp", validated)
+
+    def set_zone_reduced_temperature(self, value: float) -> None:
+        """Set zone reduced (economy) temperature."""
+        if not self._flat_api:
+            self.set_zone_temperatures(reduced=value)
+            return
+        items = self._get_flat_items_cached()
+        item = items.get("ZoneEconomyTemp", {})
+        min_t = float(item.get("min", 5)) if isinstance(item, dict) else 5.0
+        max_t = float(item.get("max", 25)) if isinstance(item, dict) else 25.0
+        step_t = float(item.get("step", 0.5)) if isinstance(item, dict) else 0.5
+
+        validated = self._validate_temperature(value, min_t, max_t, step_t, "Zone reduced temperature")
+        self._flat_save("PlantZone", items, "ZoneEconomyTemp", validated)
+        self._confirm_write("ZoneEconomyTemp", validated)
+
+    def set_zone_mode(self, mode: int) -> None:
+        """Set zone mode: 0=off, 2=manual, 3=schedule (time program)."""
+        if self._flat_api:
+            if mode not in (0, 2, 3):
+                raise RemoconDataError(f"Invalid zone mode for flat R2: {mode}. Must be 0, 2, or 3.")
+            items = self._get_flat_items_cached()
+            self._flat_save("PlantZone", items, "ZoneMode", mode)
+            self._confirm_write("ZoneMode", mode)
+            return
+        # Legacy API path
+        raw = self._get_raw()
+        if not isinstance(raw, dict):
+            raw = {}
+        zone = raw.get("zoneData") or {}
+        mode_info = zone.get("mode") or {}
+        old_mode = mode_info.get("value", MODE_AUTOMATIC)
+
+        path = (
+            f"/api/v2/remote/bsbZones/{self._gateway_id}"
+            f"/{self._zone}/mode?isCooling=false"
+        )
+        self._request("POST", path, json={"new": mode, "old": old_mode})
+
+    def set_plant_mode(self, mode: int) -> None:
+        """Set plant mode: 0=summer, 1=winter, 2=heating, 3=cooling, 5=off."""
+        if mode not in (0, 1, 2, 3, 5):
+            raise RemoconDataError(
+                f"Invalid plant mode: {mode}. Must be 0, 1, 2, 3, or 5."
+            )
+        items = self._get_flat_items_cached()
+        # Plant mode is saved via PlantMenu/Submit
+        path = f"/R2/PlantMenu/Submit/{self._gateway_id}"
+        payload = self._build_save_payload(items, "PlantMode", mode)
+        self._request("POST", path, json=payload)
+        self._confirm_write("PlantMode", mode)
+
+    def set_quiet_mode(self, enable: bool) -> None:
+        """Enable or disable quiet mode."""
+        items = self._get_flat_items_cached()
+        value = 1 if enable else 0
+        self._flat_save("PlantMenu", items, "IsQuite", value)
+        self._confirm_write("IsQuite", value)
+
+    def _confirm_write(self, item_id: str, expected_value: Any, max_retries: int = 3) -> None:
+        """Confirm a write by re-reading the item with cache disabled.
+
+        Uses useCache=False to bypass the server-side cache and get the
+        actual current value from the gateway.
+        """
+        for attempt in range(max_retries):
+            try:
+                # Force uncached read
+                response = self._request(
+                    "POST",
+                    f"/R2/PlantHome/GetData/{self._gateway_id}",
+                    json={
+                        "useCache": False,
+                        "zone": int(self._zone),
+                        "filter": {
+                            "notEssentials": False,
+                            "plant": True,
+                            "zone": True,
+                            "dhw": True,
+                        },
+                        "features": {
+                            **FLAT_FEATURES_PAYLOAD,
+                            "gatewayId": self._gateway_id,
+                            "zones": [{
+                                "num": int(self._zone), "name": "Zone",
+                                "roomSens": False, "geofenceDeroga": True,
+                                "virtInfo": None, "isHidden": False,
+                            }],
+                        },
+                    },
+                )
+                if isinstance(response, dict):
+                    data = response.get("data", {})
+                    items_list = data.get("items", []) if isinstance(data, dict) else []
+                    for item in items_list:
+                        if isinstance(item, dict) and item.get("id") == item_id:
+                            actual = item.get("value")
+                            # Compare loosely (int vs float, str vs int)
+                            try:
+                                if float(str(actual)) == float(str(expected_value)):
+                                    _LOGGER.debug(
+                                        "Write confirmed: %s = %s", item_id, actual
+                                    )
+                                    return
+                            except (TypeError, ValueError):
+                                if str(actual) == str(expected_value):
+                                    _LOGGER.debug(
+                                        "Write confirmed: %s = %s", item_id, actual
+                                    )
+                                    return
+                            _LOGGER.warning(
+                                "Write not yet confirmed (attempt %d): %s = %s, expected %s",
+                                attempt + 1, item_id, actual, expected_value,
+                            )
+                            break
+            except (RemoconConnectionError, RemoconDataError) as err:
+                _LOGGER.debug("Confirmation read failed (attempt %d): %s", attempt + 1, err)
+            # Small delay before retry
+            import time
+            time.sleep(1)
+
+        _LOGGER.warning(
+            "Could not confirm write for %s after %d attempts", item_id, max_retries
+        )
 
     def reauth(self) -> None:
         """Force re-authentication."""
