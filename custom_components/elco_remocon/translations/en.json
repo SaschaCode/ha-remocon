@@ -87,6 +87,30 @@
       },
       "hp_outside_temperature": {
         "name": "Outside Temperature (Heat Pump)"
+      },
+      "hp_mode": {
+        "name": "Heat Pump Mode",
+        "state": {
+          "off": "Off",
+          "standby": "Standby",
+          "cooling": "Cooling",
+          "heating": "Heating",
+          "heating_booster": "Booster Heating",
+          "cooling_booster": "Booster Cooling",
+          "rating_heating": "Rating Heating",
+          "rating_cooling": "Rating Cooling",
+          "frost_protection": "Frost Protection",
+          "defrost": "Defrost",
+          "overheat_protection": "Overheat Protection",
+          "compressor_delay": "Compressor Delay",
+          "system_fault": "System Fault",
+          "severe_system_fault": "Severe System Fault",
+          "refrigerant_pump_down": "Refrigerant Pump Down",
+          "emergency": "Emergency",
+          "fan_test": "Fan Test",
+          "cascade_heating": "Cascade Heating",
+          "cascade_cooling": "Cascade Cooling"
+        }
       }
     },
     "binary_sensor": {

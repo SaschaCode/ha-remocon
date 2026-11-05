@@ -183,24 +183,25 @@ def test_flat_protocol_is_cached_for_followup_polls():
     with patch.object(client, "_request", side_effect=[
         RemoconConnectionError("legacy 500"), RemoconConnectionError("BSB 500"),
         RemoconConnectionError("browser BSB 500"),
-    ] + [flat_response()] * 40) as request:
+    ] + [flat_response()] * 42) as request:
         client.get_data()
         client.get_data()
 
     # first poll: 3 probes + 2 flat calls + 12 menuItem GETs + 1 consumption GET = 18
     # second poll: 2 flat calls + 12 menuItem GETs (consumption rate-limited) = 14
-    assert request.call_count == 32
+    assert request.call_count == 34
     assert request.call_args_list[3].args[1] == "/R2/PlantHome/GetData/GW123"
     assert request.call_args_list[4].args[1] == "/R2/PlantHome/GetData/GW123"
     assert request.call_args_list[3].kwargs["json"]["filter"]["notEssentials"] is False
     assert request.call_args_list[4].kwargs["json"]["filter"]["notEssentials"] is True
-    # diagnostic calls follow the two flat calls
-    assert request.call_args_list[5].args[1].startswith("/api/v2/menuItems/GW123")
-    assert request.call_args_list[17].args[1].startswith("/api/v2/remote/reports/GW123/consSequencesApi8")
-    # second poll: flat again (calls 18,19) then menuItem diagnostics
-    assert request.call_args_list[18].args[1] == "/R2/PlantHome/GetData/GW123"
+    # first poll: probes(0-2) + flat(3,4) + v2 dataItems(5) + 12 menu(6-17) + cons(18)
+    assert request.call_args_list[5].args[1].startswith("/api/v2/remote/dataItems/GW123")
+    assert request.call_args_list[6].args[1].startswith("/api/v2/menuItems/GW123")
+    assert request.call_args_list[18].args[1].startswith("/api/v2/remote/reports/GW123/consSequencesApi8")
+    # second poll: flat(19,20) + v2(21) + 12 menu(22-33); consumption rate-limited
     assert request.call_args_list[19].args[1] == "/R2/PlantHome/GetData/GW123"
-    assert request.call_args_list[31].args[1].startswith("/api/v2/menuItems/GW123")
+    assert request.call_args_list[20].args[1] == "/R2/PlantHome/GetData/GW123"
+    assert request.call_args_list[33].args[1].startswith("/api/v2/menuItems/GW123")
     # metering is rate-limited: the second poll within METERING_POLL_INTERVAL
     # skips the consumption fetch, so 18 calls total (11 + 7).
 
@@ -508,7 +509,7 @@ def test_flat_response_from_cached_variant_goes_directly_to_flat(variant):
     with patch.object(client, "_request", return_value=flat_response()) as request:
         client.get_data()
 
-    assert request.call_count == 16
+    assert request.call_count == 17
     assert [entry.args[1] for entry in request.call_args_list[1:3]] == [
         "/R2/PlantHome/GetData/GW123", "/R2/PlantHome/GetData/GW123",
     ]

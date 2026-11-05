@@ -118,7 +118,8 @@ entity unique IDs are kept stable.
 | Key | Type | Source item | Notes |
 |-----|------|-------------|-------|
 | `flow_setpoint_temp` | Sensor °C | `ChFlowSetpointTemp` (menuItem 391 fallback) | Flow **setpoint** |
-| `flow_temp` | Sensor °C | `HeatingFlowTemp` (v2 dataItem) | **Measured** flow temp. Unique ID unchanged, but semantics changed from setpoint to measured on flat R2. (menuItem 349 returns a raw sentinel on Aerotop MONO and is NOT used.) |
+| `flow_temp` | Sensor °C | `HeatingFlowTemp` (v2 dataItem, zn=zone) | **Measured** flow temp (40 °C live vs. 52 °C setpoint). Unique ID unchanged; semantics changed from setpoint to measured on flat R2. Falls back to the setpoint if no measured item exists. (menuItem 349 returns a raw sentinel on Aerotop MONO and is NOT used.) |
+| `hp_mode` | Sensor (text) | menuItem 340 | Heat-pump operating mode: `off/standby/heating/heating_booster/defrost/...` (diagnostic) |
 | `hp_water_temp` | Sensor °C | menuItem 348 | Heat-pump water flow temp at the HP |
 | `hp_outside_temp` | Sensor °C | menuItem 341 | Outside air temp at the heat pump (diagnostic) |
 | `return_temp` | Sensor °C | `ChReturnTemp` | Return temperature (only on gateways that expose it) |

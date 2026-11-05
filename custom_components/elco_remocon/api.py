@@ -259,6 +259,12 @@ class RemoconClient:
         self._flat_api = False
         self._last_logged_variant: _PlantHomeVariant | Literal["flat"] | None = None
         self._last_metering_fetch: float = 0.0
+        # Last successfully fetched EM20 kWh (ch, dhw, total); carried over
+        # between the rate-limited metering polls so the sensors don't flap to
+        # "unknown" every poll.
+        self._last_energy: tuple[Optional[float], Optional[float], Optional[float]] = (
+            None, None, None,
+        )
 
     @property
     def is_flat_api(self) -> bool:
@@ -609,6 +615,22 @@ class RemoconClient:
             raise RemoconDataError(f"Unexpected data format from API: {type(raw)}")
 
         if self._flat_api:
+            # Some diagnostics are only exposed via the v2 dataItems API, not
+            # in the flat PlantHome response (live-verified on Aerotop MONO:
+            # HeatingFlowTemp/HeatingFlowOffset answer only with zn=zone).
+            try:
+                zone_num = int(self._zone)
+                sys_items = self._get_system_items([
+                    {"id": "HeatingFlowTemp", "zn": zone_num},
+                    {"id": "HeatingFlowOffset", "zn": zone_num},
+                    {"id": "ChFlowTemp", "zn": 0},
+                    {"id": "ChReturnTemp", "zn": 0},
+                ])
+                for item_id, val in sys_items.items():
+                    if val is not None and item_id not in raw:
+                        raw[item_id] = {"id": item_id, "value": val}
+            except Exception as err:  # noqa: BLE001 - diagnostics are optional
+                _LOGGER.debug("v2 system items unavailable: %s", err)
             data = self._flat_data(raw)
             # menuItems: numbered controller parameters (backup heater, HP
             # mode, measured flow temp). Diagnostics only — a failure here
@@ -620,15 +642,33 @@ class RemoconClient:
                 menu_items = {}
             self._apply_menu_items(data, menu_items)
             # EM20 metering on a slower cadence: only re-fetch when the
-            # interval elapsed, otherwise keep the last values.
+            # interval elapsed; between fetches keep the last known values so
+            # the energy sensors do not flap to unknown every poll.
             now = time.monotonic()
             if now - self._last_metering_fetch >= METERING_POLL_INTERVAL:
                 self._last_metering_fetch = now
                 try:
                     report = self.get_consumption_report()
                     self._apply_consumption(data, report)
+                    self._last_energy = (
+                        data.energy_consumed_ch_kwh,
+                        data.energy_consumed_dhw_kwh,
+                        data.energy_consumed_total_kwh,
+                    )
                 except Exception as err:  # noqa: BLE001 - metering is optional
                     _LOGGER.debug("Consumption report unavailable: %s", err)
+                    # Keep last known values on failure too (no flap to unknown).
+                    (
+                        data.energy_consumed_ch_kwh,
+                        data.energy_consumed_dhw_kwh,
+                        data.energy_consumed_total_kwh,
+                    ) = self._last_energy
+            else:
+                (
+                    data.energy_consumed_ch_kwh,
+                    data.energy_consumed_dhw_kwh,
+                    data.energy_consumed_total_kwh,
+                ) = self._last_energy
             return data
         plant = raw.get("plantData") or {}
         zone = raw.get("zoneData") or {}
@@ -872,10 +912,15 @@ class RemoconClient:
             # HeatingFlowTemp (v2 dataItem) is the reliable source; ChFlowTemp
             # is tried as a fallback for other GALEVO plants. menuItem 349 is
             # deliberately NOT used (returns raw sentinel 3276.0 on Aerotop MONO).
+            # If neither is present, fall back to the setpoint so the existing
+            # flow_temp entity keeps a value (its setpoint fallback is documented
+            # in sensor.py).
             flow_temperature=(
                 number("HeatingFlowTemp")
                 if value("HeatingFlowTemp") is not None
-                else (number("ChFlowTemp") if value("ChFlowTemp") is not None else None)
+                else (number("ChFlowTemp") if value("ChFlowTemp") is not None
+                      else (number("ChFlowSetpointTemp")
+                            if value("ChFlowSetpointTemp") is not None else None))
             ),
             flow_setpoint_temperature=(
                 number("ChFlowSetpointTemp")

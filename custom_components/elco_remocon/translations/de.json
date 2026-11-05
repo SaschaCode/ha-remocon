@@ -87,6 +87,30 @@
       },
       "hp_outside_temperature": {
         "name": "Außentemperatur (Wärmepumpe)"
+      },
+      "hp_mode": {
+        "name": "Wärmepumpen-Modus",
+        "state": {
+          "off": "Aus",
+          "standby": "Standby",
+          "cooling": "Kühlen",
+          "heating": "Heizen",
+          "heating_booster": "Booster-Heizen",
+          "cooling_booster": "Booster-Kühlen",
+          "rating_heating": "Nennbetrieb Heizen",
+          "rating_cooling": "Nennbetrieb Kühlen",
+          "frost_protection": "Frostschutz",
+          "defrost": "Abtauen",
+          "overheat_protection": "Überhitzungsschutz",
+          "compressor_delay": "Verdichterverzögerung",
+          "system_fault": "Systemfehler",
+          "severe_system_fault": "Schwerer Systemfehler",
+          "refrigerant_pump_down": "Kältemittel-Pumpdown",
+          "emergency": "Notbetrieb",
+          "fan_test": "Lüftertest",
+          "cascade_heating": "Kaskade Heizen",
+          "cascade_cooling": "Kaskade Kühlen"
+        }
       }
     },
     "binary_sensor": {

@@ -317,10 +317,13 @@ def test_sensor_descriptions_exist_fn():
     for key in (
         "flow_setpoint_temp", "room_temp", "hp_water_temp", "heating_curve_offset",
         "energy_consumed_ch", "energy_consumed_dhw", "energy_consumed_total",
+        "hp_mode",
     ):
         assert by_key[key].exists_fn(full), key
     for key in ("return_temp", "power", "compressor_freq"):
         assert not by_key[key].exists_fn(full), key
+    # flow_temp exists via setpoint fallback even without measured flow
+    assert by_key["flow_temp"].exists_fn(full)
 
     empty = RemoconData()
     for key in (
@@ -458,3 +461,62 @@ def test_cli_fixture_is_redacted():
     text = FIXTURE.read_text(encoding="utf-8")
     assert "0C8B950B67D8" not in text
     assert "password" not in text.lower() or "<REDACTED>" in text
+
+
+# ---------------------------------------------------------------------------
+# Live-gateway behaviours (Aerotop MONO 15.2 ODU, 2026-11-05)
+# ---------------------------------------------------------------------------
+
+def test_flow_temp_falls_back_to_setpoint_when_no_measured_item():
+    """Gateways without HeatingFlowTemp/ChFlowTemp still show flow_temp (setpoint)."""
+    items = {
+        "ZoneComfortTemp": {"id": "ZoneComfortTemp", "value": 21},
+        "ChFlowSetpointTemp": {"id": "ChFlowSetpointTemp", "value": 52},
+    }
+    data = RemoconClient._flat_data(items)
+    assert data.flow_temperature == 52.0          # setpoint fallback
+    assert data.flow_setpoint_temperature == 52.0
+
+
+def test_room_temp_zero_means_unknown_value():
+    """ZoneMeasuredTemp exists but 0.0 (no room sensor) -> sensor value None."""
+    _stub_sensor_platform_modules()
+    from custom_components.elco_remocon.sensor import SENSORS
+    d = RemoconData(room_temp=0.0, has_room_sensor=True)
+    desc = {x.key: x for x in SENSORS}["room_temp"]
+    assert desc.exists_fn(d) is True
+    assert desc.value_fn(d) is None  # 0.0 -> unknown, not bogus 0 °C
+
+
+def test_hp_mode_sensor_maps_menu340():
+    _stub_sensor_platform_modules()
+    from custom_components.elco_remocon.sensor import SENSORS, HP_MODE_MAP
+    desc = {x.key: x for x in SENSORS}["hp_mode"]
+    d = RemoconData(hp_mode=9)
+    assert desc.exists_fn(d) is True
+    assert desc.value_fn(d) == "defrost"
+    d2 = RemoconData(hp_mode=4)
+    assert desc.value_fn(d2) == "heating_booster"
+    assert HP_MODE_MAP[3] == "heating"
+
+
+def test_energy_values_carry_over_between_metering_polls():
+    """Between the 15-min metering fetches, energy sensors keep last values."""
+    client = make_client()
+    client._flat_api = True
+    items = flat_items_from_fixture()
+
+    def fake_request(method, path, **kwargs):
+        if "consSequencesApi8" in path:
+            return load_fixture()["consumption"]
+        if "menuItems=" in path:
+            return []
+        if "dataItems" in path:
+            return {"items": []}
+        return _flat_response(items)
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        d1 = client.get_data()
+        assert d1.energy_consumed_total_kwh is not None
+        d2 = client.get_data()  # within METERING_POLL_INTERVAL -> carried over
+        assert d2.energy_consumed_total_kwh == d1.energy_consumed_total_kwh
