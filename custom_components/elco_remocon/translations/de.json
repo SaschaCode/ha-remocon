@@ -18,6 +18,17 @@
       "no_data": "Keine Daten von der Anlage erhalten. Gateway ID korrekt?"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Remocon-Net Optionen",
+        "description": "Abfrageintervall in Sekunden. 60 s löst 10-minütige Wärmepumpen-Laufphasen gut auf; Standard ist 120 s.",
+        "data": {
+          "scan_interval": "Abfrageintervall (Sekunden, 30–600)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "outside_temperature": {
@@ -43,6 +54,39 @@
       },
       "dhw_reduced_temp": {
         "name": "Warmwasser-Absenktemperatur"
+      },
+      "flow_setpoint_temperature": {
+        "name": "Vorlauf-Solltemperatur"
+      },
+      "return_temperature": {
+        "name": "Rücklauftemperatur"
+      },
+      "room_temperature": {
+        "name": "Raumtemperatur"
+      },
+      "power": {
+        "name": "Leistung"
+      },
+      "compressor_frequency": {
+        "name": "Verdichterfrequenz"
+      },
+      "hp_water_temperature": {
+        "name": "Wärmepumpen-Wassertemperatur"
+      },
+      "heating_curve_offset": {
+        "name": "Heizkurven-Verschiebung"
+      },
+      "energy_consumed_ch": {
+        "name": "Stromverbrauch Heizen (48 h)"
+      },
+      "energy_consumed_dhw": {
+        "name": "Stromverbrauch Warmwasser (48 h)"
+      },
+      "energy_consumed_total": {
+        "name": "Stromverbrauch Gesamt (48 h)"
+      },
+      "hp_outside_temperature": {
+        "name": "Außentemperatur (Wärmepumpe)"
       }
     },
     "binary_sensor": {
@@ -51,6 +95,18 @@
       },
       "heat_or_cool_request": {
         "name": "Heiz-/Kühlanforderung"
+      },
+      "backup_heater": {
+        "name": "Heizstab"
+      },
+      "defrost": {
+        "name": "Abtauen"
+      },
+      "dhw_request": {
+        "name": "Warmwasseranforderung"
+      },
+      "dhw_heating_rod": {
+        "name": "Warmwasser-Heizstab"
       }
     },
     "number": {

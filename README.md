@@ -16,9 +16,16 @@ Control and monitor your Elco heat pump (e.g. Aerotop SPK) through the Remocon-N
 - **Zone controls** — Comfort and reduced temperature numbers and zone mode
 - **Plant controls** — Plant mode select and quiet mode switch
 - **Sensors** — Outside temperature, flow temperature, target temperature, system pressure
+- **Heat-pump diagnostics (flat R2 / GALEVO gateways)** — Power (W), compressor frequency (Hz),
+  measured flow vs. flow setpoint vs. return temperature, room temperature, heat-pump water
+  temperature, heating-curve offset, EM20 energy consumption (CH/DHW/total over the last 48 h)
+- **Diagnostic binary sensors** — Backup heater (Heizstab), defrost, DHW request, DHW heating rod
+- **Options flow** — Poll interval configurable 30–600 s (default 120 s; 60 s recommended so
+  10-minute run phases are well resolved)
 - **Binary sensors** — Heating active, cooling active, heat pump running
 - **Config flow** — Easy setup directly in the Home Assistant UI
-- **CLI tool** — Standalone `remocon.py` for testing and debugging from the terminal
+- **CLI tool** — Standalone `remocon.py` for testing and debugging, incl. `dump-items` for
+  API discovery (writes redacted fixtures)
 
 ## Requirements
 
@@ -102,6 +109,36 @@ After setup, the following entities are created:
 | `switch.dhw_boost` | Switch | Enable rapid DHW heating |
 | `switch.quiet_mode` | Switch | Enable quiet operation |
 
+### Heat-pump diagnostics (flat R2 / GALEVO gateways)
+
+These are added only when the gateway reports the corresponding item during setup; gateways
+that don't expose a value get no entity (same rule as the read-only entities above). Existing
+entity unique IDs are kept stable.
+
+| Key | Type | Source item | Notes |
+|-----|------|-------------|-------|
+| `flow_setpoint_temp` | Sensor °C | `ChFlowSetpointTemp` (menuItem 391 fallback) | Flow **setpoint** |
+| `flow_temp` | Sensor °C | `HeatingFlowTemp` (v2 dataItem) | **Measured** flow temp. Unique ID unchanged, but semantics changed from setpoint to measured on flat R2. (menuItem 349 returns a raw sentinel on Aerotop MONO and is NOT used.) |
+| `hp_water_temp` | Sensor °C | menuItem 348 | Heat-pump water flow temp at the HP |
+| `hp_outside_temp` | Sensor °C | menuItem 341 | Outside air temp at the heat pump (diagnostic) |
+| `return_temp` | Sensor °C | `ChReturnTemp` | Return temperature (only on gateways that expose it) |
+| `room_temp` | Sensor °C | `ZoneMeasuredTemp` | Only when a room sensor is present |
+| `power` | Sensor W | `HpElectricPower` | Instantaneous power (only on gateways that expose it; on Aerotop MONO use Shelly 3EM/SHM2 instead) |
+| `compressor_freq` | Sensor Hz | `HpCompressorFreq` | Compressor frequency (not exposed by Aerotop MONO) |
+| `heating_curve_offset` | Sensor K | `HeatingFlowOffset` | Heating-curve parallel offset (diagnostic) |
+| `energy_consumed_ch` / `_dhw` / `_total` | Sensor kWh | EM20 `consSequencesApi8` (k=1/2, p=1) | Sum over the last 48 h of 2 h buckets, polled every 15 min |
+| `backup_heater` | Binary | menuItem 340 mode 4/5 (booster) | CH backup heater active (menuItem 337 is EMPTY on Aerotop MONO) |
+| `defrost` | Binary | menuItem 340 mode 9/17, or `DefrostActive` | Defrost active |
+| `dhw_request` | Binary | `DhwHeatRequest` | DHW heat request |
+| `dhw_heating_rod` | Binary | `IsResistorOn` | DHW heating rod active |
+
+**Options:** Settings → Devices & Services → Remocon-Net → Configure → poll interval
+(30–600 s, default 120 s). 60 s resolves 10-minute heat-pump run phases well.
+
+**Discovery:** `python3 remocon.py --config-file config.json dump-items --output tests/fixtures/dump.json`
+dumps every readable item (full flat R2, v2 dataItems candidates, menuItems, advanced settings,
+EM20 metering) with credentials and the gateway ID redacted.
+
 ### Additional gateway-dependent entities
 
 These four read-only entities are added when the gateway reports a valid value
@@ -169,7 +206,7 @@ The CLI keeps the existing commands and legacy API behavior for older gateways. 
 ## Known limitations
 
 - **Cloud-dependent:** Control goes through the Remocon-Net cloud. No control possible during internet outages.
-- **Polling:** Data is fetched every 2 minutes (no real-time streaming).
+- **Polling:** Data is fetched every 2 minutes by default; the interval is configurable 30–600 s via the options flow.
 - **No room sensor:** If no room thermostat is connected, `current_temperature` shows the target value.
 - **Flat-R2 verification scope:** Time programs, buffer temperatures, and advanced menu parameters remain read-only until their web-app write payloads are reverse-engineered.
 

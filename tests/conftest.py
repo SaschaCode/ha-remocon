@@ -55,6 +55,23 @@ class _ConfigFlow:
 
 config_entries.ConfigFlow = _ConfigFlow
 
+
+class _OptionsFlow:
+    """Small stand-in for the options flow base used by unit tests."""
+
+    def __init__(self, config_entry=None):
+        if config_entry is not None:
+            self.config_entry = config_entry
+
+    def async_show_form(self, *, step_id, data_schema=None, errors=None):
+        return {"type": "form", "step_id": step_id, "data_schema": data_schema, "errors": errors or {}}
+
+    def async_create_entry(self, *, title, data):
+        return {"type": "create_entry", "title": title, "data": data}
+
+
+config_entries.OptionsFlow = _OptionsFlow
+
 const = _module("homeassistant.const")
 const.CONF_EMAIL = "email"
 const.CONF_PASSWORD = "password"
@@ -78,6 +95,9 @@ vol = _module("voluptuous")
 vol.Schema = lambda schema: schema
 vol.Required = lambda key, **kwargs: key
 vol.Optional = lambda key, **kwargs: key
+vol.All = lambda *validators: (lambda v: v)
+vol.Coerce = lambda typ: (lambda v: typ(v))
+vol.Range = lambda min=None, max=None: (lambda v: v)
 
 helpers = _module("homeassistant.helpers")
 helpers.__path__ = []

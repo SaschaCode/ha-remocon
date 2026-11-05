@@ -149,14 +149,24 @@ def test_http_200_flat_response_is_detected_and_mapped():
     with patch.object(
         client,
         "_request",
-        side_effect=[flat_response(), flat_response(), flat_response()],
+        side_effect=[flat_response()] * 9,
     ) as request:
         data = client.get_data()
 
-    assert request.call_count == 3
-    assert request.call_args.args[1].startswith("/R2/PlantHome/GetData/")
-    assert "?umsys=si" not in request.call_args.args[1]
-    assert request.call_args.kwargs["json"]["features"]["hpSys"] is True
+    assert request.call_count == 11
+    # The LAST call is now a diagnostic GET (menuItem/consumption), so assert on
+    # the first flat item-group call instead of call_args (which is the last).
+    assert request.call_args_list[1].args[1].startswith("/R2/PlantHome/GetData/")
+    assert "?umsys=si" not in request.call_args_list[1].args[1]
+    assert request.call_args_list[1].kwargs["json"]["features"]["hpSys"] is True
+    # Diagnostic calls (menuItems GETs, consumption GET) follow the flat calls.
+    from custom_components.elco_remocon.api import FLAT_MENU_ITEM_IDS
+    all_paths = [c.args[1] for c in request.call_args_list]
+    menu_paths = [p_ for p_ in all_paths if p_.startswith("/api/v2/menuItems/GW123")]
+    # only the first N menu IDs fit in this test's mock budget; assert prefix order
+    assert menu_paths == [f"/api/v2/menuItems/GW123?menuItems={m}" for m in FLAT_MENU_ITEM_IDS[:len(menu_paths)]]
+    assert len(menu_paths) >= 5
+    assert any(p_.startswith("/api/v2/remote/reports/GW123/consSequencesApi8") for p_ in all_paths)
     assert data.comfort_temp == 21.5
     assert data.reduced_temp == 18
     assert data.room_temp == 20.25
@@ -173,16 +183,26 @@ def test_flat_protocol_is_cached_for_followup_polls():
     with patch.object(client, "_request", side_effect=[
         RemoconConnectionError("legacy 500"), RemoconConnectionError("BSB 500"),
         RemoconConnectionError("browser BSB 500"),
-        flat_response(), flat_response(), flat_response(), flat_response(),
-    ]) as request:
+    ] + [flat_response()] * 40) as request:
         client.get_data()
         client.get_data()
 
-    assert request.call_count == 7
+    # first poll: 3 probes + 2 flat calls + 12 menuItem GETs + 1 consumption GET = 18
+    # second poll: 2 flat calls + 12 menuItem GETs (consumption rate-limited) = 14
+    assert request.call_count == 32
     assert request.call_args_list[3].args[1] == "/R2/PlantHome/GetData/GW123"
     assert request.call_args_list[4].args[1] == "/R2/PlantHome/GetData/GW123"
-    assert request.call_args_list[5].kwargs["json"]["filter"]["notEssentials"] is False
-    assert request.call_args_list[6].kwargs["json"]["filter"]["notEssentials"] is True
+    assert request.call_args_list[3].kwargs["json"]["filter"]["notEssentials"] is False
+    assert request.call_args_list[4].kwargs["json"]["filter"]["notEssentials"] is True
+    # diagnostic calls follow the two flat calls
+    assert request.call_args_list[5].args[1].startswith("/api/v2/menuItems/GW123")
+    assert request.call_args_list[17].args[1].startswith("/api/v2/remote/reports/GW123/consSequencesApi8")
+    # second poll: flat again (calls 18,19) then menuItem diagnostics
+    assert request.call_args_list[18].args[1] == "/R2/PlantHome/GetData/GW123"
+    assert request.call_args_list[19].args[1] == "/R2/PlantHome/GetData/GW123"
+    assert request.call_args_list[31].args[1].startswith("/api/v2/menuItems/GW123")
+    # metering is rate-limited: the second poll within METERING_POLL_INTERVAL
+    # skips the consumption fetch, so 18 calls total (11 + 7).
 
 
 def test_http_500_legacy_families_use_flat_fallback():
@@ -191,11 +211,11 @@ def test_http_500_legacy_families_use_flat_fallback():
     with patch.object(
         client,
         "_request",
-        side_effect=[legacy_error, legacy_error, legacy_error, flat_response(), flat_response()],
+        side_effect=[legacy_error, legacy_error, legacy_error] + [flat_response()] * 8,
     ) as request:
         data = client.get_data()
 
-    assert request.call_count == 5
+    assert request.call_count == 13
     fallback_path = request.call_args_list[3].args[1]
     assert fallback_path == "/R2/PlantHome/GetData/GW123"
     payload = request.call_args_list[3].kwargs["json"]
@@ -210,7 +230,7 @@ def test_flat_response_disables_unverified_writes():
         with pytest.raises(RemoconDataError, match="Control is disabled"):
             client.set_zone_temperatures(comfort=22)
 
-    # Only the read request was made; no control request escaped.
+    # Only read requests were made; no control request escaped.
     assert request.call_count == 3
 
 
@@ -266,10 +286,10 @@ def test_flat_status_group_is_optional_and_supplies_heat_pump_state():
         {"id": "ZoneHeatRequest", "value": 1},
         {"id": "PlantMode", "value": 1},
     ]}}
-    with patch.object(client, "_request", side_effect=[essential, status]) as request:
+    with patch.object(client, "_request", side_effect=[essential, status] + [essential] * 6) as request:
         data = client.get_data()
 
-    assert request.call_count == 2
+    assert request.call_count == 10
     assert request.call_args_list[1].kwargs["json"]["filter"] == {
         "dhw": False,
         "notEssentials": True,
@@ -470,11 +490,10 @@ def test_invalid_browser_response_is_not_cached_and_reaches_flat(response):
         RemoconConnectionError("BSB SI unavailable"),
         response,
         flat_response(),
-        flat_response(),
-    ]) as request:
+    ] + [flat_response()] * 6) as request:
         data = client.get_data()
 
-    assert request.call_count == 5
+    assert request.call_count == 12
     assert request.call_args_list[2].args[1] == "/R2/PlantHomeBsb/GetData/GW123"
     assert request.call_args_list[3].args[1] == "/R2/PlantHome/GetData/GW123"
     assert data.comfort_temp == 21.5
@@ -489,11 +508,11 @@ def test_flat_response_from_cached_variant_goes_directly_to_flat(variant):
     with patch.object(client, "_request", return_value=flat_response()) as request:
         client.get_data()
 
-    assert request.call_count == 3
-    assert [entry.args[1] for entry in request.call_args_list[1:]] == [
+    assert request.call_count == 16
+    assert [entry.args[1] for entry in request.call_args_list[1:3]] == [
         "/R2/PlantHome/GetData/GW123", "/R2/PlantHome/GetData/GW123",
     ]
-    assert all("features" in entry.kwargs["json"] for entry in request.call_args_list[1:])
+    assert all("features" in entry.kwargs["json"] for entry in request.call_args_list[1:3])
     assert client._planthome_variant is None
     assert client.is_flat_api is True
 
@@ -564,12 +583,12 @@ def test_other_cached_browser_connection_errors_allow_fallback_without_duplicate
         http_response(500),
         http_response(payload=flat_response()),
         http_response(payload=flat_response()),
-    ]
+    ] + [http_response(payload=flat_response())] * 6
     client._session = session
 
     data = client.get_data()
 
-    assert [entry.args[1] for entry in session.request.call_args_list] == [
+    assert [entry.args[1] for entry in session.request.call_args_list[:5]] == [
         f"{BASE_URL}/R2/PlantHomeBsb/GetData/GW123",
         f"{BASE_URL}/R2/PlantHome/GetData/GW123?umsys=si",
         f"{BASE_URL}/R2/PlantHomeBsb/GetData/GW123?umsys=si",
@@ -659,13 +678,13 @@ def test_unrecognized_browser_temporary_failure_still_uses_flat_fallback(failure
         ),
         http_response(payload=flat_response()),
         http_response(payload=flat_response()),
-    ]
+    ] + [http_response(payload=flat_response())] * 6
     client._session = session
 
     data = client.get_data()
 
-    assert session.request.call_count == 5
-    assert [entry.args[1] for entry in session.request.call_args_list] == [
+    assert session.request.call_count == 13
+    assert [entry.args[1] for entry in session.request.call_args_list[:5]] == [
         f"{BASE_URL}/R2/PlantHome/GetData/GW123?umsys=si",
         f"{BASE_URL}/R2/PlantHomeBsb/GetData/GW123?umsys=si",
         f"{BASE_URL}/R2/PlantHomeBsb/GetData/GW123",

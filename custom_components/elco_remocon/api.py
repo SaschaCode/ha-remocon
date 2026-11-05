@@ -75,9 +75,39 @@ FLAT_RELEVANT_ITEM_IDS = {
     "ZoneComfortTemp", "ZoneEconomyTemp", "ZoneDesiredTemp", "ZoneMeasuredTemp",
     "ZoneMode", "ZoneHeatRequest", "OutsideTemp", "DhwStorageTemperature",
     "DhwTimeProgComfortTemp", "DhwTimeProgEconomyTemp", "DhwMode",
-    "IsHeatingPumpOn", "HeatingCircuitPressure", "ChFlowSetpointTemp",
+    "IsHeatingPumpOn", "HeatingCircuitPressure",    "ChFlowSetpointTemp",
     "IsDhwBoost", "IsQuite", "PlantMode",
+    # Diagnostics (Phase 2 of the nightly-peaks plan). Live-verified on the
+    # Aerotop MONO 15.2 ODU (GALEVO) gateway 2026-11-05. NOTE: measured flow is
+    # HeatingFlowTemp (NOT ChFlowTemp, which this gateway omits); menuItem 349
+    # is a broken sentinel here. No instantaneous power / compressor-frequency
+    # dataItem exists on this gateway - use Shelly 3EM / SHM2 for power.
+    "HeatingFlowTemp", "HeatingFlowOffset", "IsResistorOn", "DefrostActive",
+    "DhwHeatRequest",
 }
+
+# menuItems (numbered controller parameters, GET /api/v2/menuItems/{gw}).
+# ONE unsupported number fails the whole batch with HTTP 500, so each ID is
+# requested on its own and failures are isolated. Live-verified on the
+# Aerotop MONO 15.2 ODU (GALEVO) gateway 2026-11-05; IDs that return EMPTY or
+# 500 on a given plant are simply absent from the result.
+# NOTE: menuItem 349 ("CH flow temperature") returns a raw sentinel (3276.0)
+# on this gateway, NOT a temperature - do not use it. Measured flow comes from
+# the HeatingFlowTemp dataItem / menuItem 348 instead.
+FLAT_MENU_ITEM_IDS = (119, 130, 146, 302, 303, 304, 305, 339, 340, 341, 348, 391)
+
+# EM20 consumption report: GET /api/v2/remote/reports/{gw}/consSequencesApi8
+# Returns [{"k": type, "p": period, "v": [kWh buckets]}]. k=1 CH electricity,
+# k=2 DHW electricity, k=3 cooling. p=1 -> 24 x 2h buckets (last 48 h),
+# p=2 -> last 7 days, p=3 -> previous-month days, p=4 -> completed months.
+CONSUMPTION_REPORT_PATH = "/api/v2/remote/reports/{gw}/consSequencesApi8?usages=Ch%2CDhw%2CCooling"
+CONSUMPTION_KIND_CH = 1
+CONSUMPTION_KIND_DHW = 2
+CONSUMPTION_PERIOD_BUCKETS = 1
+
+# Seconds between EM20 consumption-report polls (the cloud updates the 2-hour
+# buckets at even hours; polling faster is pointless).
+METERING_POLL_INTERVAL = 900
 
 DHW_WRITE_REQUIRED_ITEM_IDS = (
     "DhwTimeProgComfortTemp",
@@ -188,6 +218,30 @@ class RemoconData:
     # System (from v2 API)
     system_pressure: Optional[float] = None
     flow_temperature: Optional[float] = None
+    # Diagnostics (flat R2 gateways; None when the gateway omits the item).
+    # NOTE: on flat R2, `flow_temperature` is the MEASURED flow temperature
+    # (`HeatingFlowTemp`; live-verified on Aerotop MONO 15.2 ODU 2026-11-05 —
+    # this gateway omits ChFlowTemp and menuItem 349 returns a raw sentinel).
+    # The setpoint is `flow_setpoint_temperature` (`ChFlowSetpointTemp`,
+    # menuItem 391 as fallback). The existing `flow_temp` entity unique ID is
+    # kept, but its semantics changed from setpoint to measured on flat R2.
+    flow_setpoint_temperature: Optional[float] = None
+    return_temperature: Optional[float] = None
+    power_w: Optional[float] = None
+    compressor_freq_hz: Optional[float] = None
+    compressor_modulation: Optional[float] = None
+    hp_water_temperature: Optional[float] = None
+    hp_outside_temp: Optional[float] = None
+    hp_mode: Optional[int] = None
+    backup_heater_on: Optional[bool] = None
+    dhw_heating_rod_on: Optional[bool] = None
+    defrost_active: Optional[bool] = None
+    dhw_request: Optional[bool] = None
+    heating_curve_offset: Optional[float] = None
+    # EM20 metering (slower, separate fetch; None when unavailable).
+    energy_consumed_ch_kwh: Optional[float] = None
+    energy_consumed_dhw_kwh: Optional[float] = None
+    energy_consumed_total_kwh: Optional[float] = None
     # Meta
     has_room_sensor: bool = False
 
@@ -204,6 +258,7 @@ class RemoconClient:
         self._planthome_variant: _PlantHomeVariant | None = None
         self._flat_api = False
         self._last_logged_variant: _PlantHomeVariant | Literal["flat"] | None = None
+        self._last_metering_fetch: float = 0.0
 
     @property
     def is_flat_api(self) -> bool:
@@ -501,14 +556,80 @@ class RemoconClient:
         data = self._request("POST", path, json=payload)
         return {item["id"]: item.get("value") for item in data.get("items", [])} if isinstance(data, dict) else {}
 
+    def _get_menu_items(self) -> dict[int, Any]:
+        """Read numbered menuItems, each ID in its own request.
+
+        One unsupported number fails the whole batch with HTTP 500, so IDs
+        are requested individually and failures are isolated per ID.
+        Returns {menu_id: item-dict}; missing/failed IDs are absent.
+        """
+        out: dict[int, Any] = {}
+        for menu_id in FLAT_MENU_ITEM_IDS:
+            try:
+                data = self._request(
+                    "GET",
+                    f"/api/v2/menuItems/{self._gateway_id}?menuItems={menu_id}",
+                )
+            except (RemoconConnectionError, RemoconDataError) as err:
+                _LOGGER.debug("menuItem %s unavailable: %s", menu_id, err)
+                continue
+            items = data if isinstance(data, list) else []
+            for item in items:
+                if isinstance(item, dict) and item.get("id") == menu_id:
+                    out[menu_id] = item
+                    break
+        return out
+
+    def get_consumption_report(self) -> dict[tuple[int, int], list[float]]:
+        """Fetch the EM20 consumption report and index it as {(k, p): [kWh]}.
+
+        Raises RemoconConnectionError/RemoconDataError on failure; callers
+        treat metering as optional.
+        """
+        path = CONSUMPTION_REPORT_PATH.format(gw=self._gateway_id)
+        data = self._request("GET", path)
+        out: dict[tuple[int, int], list[float]] = {}
+        for seq in data if isinstance(data, list) else []:
+            if not isinstance(seq, dict):
+                continue
+            try:
+                key = (int(seq["k"]), int(seq["p"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            try:
+                out[key] = [float(v or 0) for v in seq.get("v") or []]
+            except (TypeError, ValueError):
+                continue
+        return out
+
     def get_data(self) -> RemoconData:
         """Fetch all data and return a RemoconData object."""
         raw = self._get_raw()
         if not isinstance(raw, dict):
             raise RemoconDataError(f"Unexpected data format from API: {type(raw)}")
-            
+
         if self._flat_api:
-            return self._flat_data(raw)
+            data = self._flat_data(raw)
+            # menuItems: numbered controller parameters (backup heater, HP
+            # mode, measured flow temp). Diagnostics only — a failure here
+            # must never fail the main poll.
+            try:
+                menu_items = self._get_menu_items()
+            except Exception as err:  # noqa: BLE001 - diagnostics are optional
+                _LOGGER.debug("menuItems fetch failed, diagnostics partial: %s", err)
+                menu_items = {}
+            self._apply_menu_items(data, menu_items)
+            # EM20 metering on a slower cadence: only re-fetch when the
+            # interval elapsed, otherwise keep the last values.
+            now = time.monotonic()
+            if now - self._last_metering_fetch >= METERING_POLL_INTERVAL:
+                self._last_metering_fetch = now
+                try:
+                    report = self.get_consumption_report()
+                    self._apply_consumption(data, report)
+                except Exception as err:  # noqa: BLE001 - metering is optional
+                    _LOGGER.debug("Consumption report unavailable: %s", err)
+            return data
         plant = raw.get("plantData") or {}
         zone = raw.get("zoneData") or {}
 
@@ -562,6 +683,72 @@ class RemoconClient:
             flow_temperature=float(flow) if flow is not None else None,
             has_room_sensor=bool(zone.get("hasRoomSensor", 0)),
         )
+
+    @staticmethod
+    def _menu_number(menu_items: dict[int, Any], menu_id: int) -> float | None:
+        item = menu_items.get(menu_id)
+        if not isinstance(item, dict):
+            return None
+        v = item.get("value")
+        if v is None or v == "":
+            return None
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if isfinite(f) else None
+
+    @classmethod
+    def _apply_menu_items(cls, data: RemoconData, menu_items: dict[int, Any]) -> None:
+        """Overlay numbered menuItems onto RemoconData (flat R2 diagnostics).
+
+        Live-verified on Aerotop MONO 15.2 ODU (2026-11-05):
+          340 HP mode (0 off, 1 standby, 3 heating, 9/17 defrost, 4 booster),
+          348 HP water flow temp (°C), 391 CH flow setpoint (°C),
+          341 outside air temp at the HP, 305 DHW storage temp, 119 signal %.
+        menuItem 349 is NOT used (raw sentinel 3276.0 on this gateway);
+        menuItem 337 (backup heater) returns EMPTY on this plant.
+        """
+        # 340: heat pump operating mode; 9/17 = defrost, 4/5 = booster heating
+        mode = cls._menu_number(menu_items, 340)
+        if mode is not None:
+            data.hp_mode = int(mode)
+            if int(mode) in (9, 17):
+                data.defrost_active = True
+            if int(mode) in (4, 5):
+                data.backup_heater_on = True
+        # 348: heat pump water (flow) temperature, measured at the HP
+        data.hp_water_temperature = cls._menu_number(menu_items, 348)
+        # 391: CH flow setpoint (backup if ChFlowSetpointTemp missing)
+        flow_sp = cls._menu_number(menu_items, 391)
+        if flow_sp is not None and data.flow_setpoint_temperature is None:
+            data.flow_setpoint_temperature = flow_sp
+        # 305: DHW storage temperature (backup if dataItem missing)
+        # 341: outside air temperature at the heat pump
+        hp_outside = cls._menu_number(menu_items, 341)
+        if hp_outside is not None:
+            data.hp_outside_temp = hp_outside
+
+    @staticmethod
+    def _apply_consumption(
+        data: RemoconData, report: dict[tuple[int, int], list[float]]
+    ) -> None:
+        """Store cumulative EM20 kWh totals from the consumption report.
+
+        The report carries per-bucket kWh, not a running total, so the
+        'total' exposed here is the sum over the last 48 h of 2-hour buckets.
+        That is a windowed total; for a true monotonic lifetime counter the
+        integration imports the buckets into HA long-term statistics and the
+        Energy dashboard uses those.
+        """
+        ch = report.get((CONSUMPTION_KIND_CH, CONSUMPTION_PERIOD_BUCKETS)) or []
+        dhw = report.get((CONSUMPTION_KIND_DHW, CONSUMPTION_PERIOD_BUCKETS)) or []
+        if ch:
+            data.energy_consumed_ch_kwh = round(sum(ch), 4)
+        if dhw:
+            data.energy_consumed_dhw_kwh = round(sum(dhw), 4)
+        if ch or dhw:
+            data.energy_consumed_total_kwh = round(sum(ch) + sum(dhw), 4)
 
     @staticmethod
     def _flat_data(items: dict[str, Any]) -> RemoconData:
@@ -681,9 +868,53 @@ class RemoconClient:
                 if value("HeatingCircuitPressure") is not None
                 else None
             ),
+            # Measured flow temperature. Live-verified on this gateway family:
+            # HeatingFlowTemp (v2 dataItem) is the reliable source; ChFlowTemp
+            # is tried as a fallback for other GALEVO plants. menuItem 349 is
+            # deliberately NOT used (returns raw sentinel 3276.0 on Aerotop MONO).
             flow_temperature=(
+                number("HeatingFlowTemp")
+                if value("HeatingFlowTemp") is not None
+                else (number("ChFlowTemp") if value("ChFlowTemp") is not None else None)
+            ),
+            flow_setpoint_temperature=(
                 number("ChFlowSetpointTemp")
                 if value("ChFlowSetpointTemp") is not None
+                else None
+            ),
+            return_temperature=(
+                number("ChReturnTemp")
+                if value("ChReturnTemp") is not None
+                else None
+            ),
+            power_w=(
+                number("HpElectricPower")
+                if value("HpElectricPower") is not None
+                else None
+            ),
+            compressor_freq_hz=(
+                number("HpCompressorFreq")
+                if value("HpCompressorFreq") is not None
+                else None
+            ),
+            dhw_heating_rod_on=(
+                _optional_bool(value("IsResistorOn"))
+                if value("IsResistorOn") is not None
+                else None
+            ),
+            defrost_active=(
+                _optional_bool(value("DefrostActive"))
+                if value("DefrostActive") is not None
+                else None
+            ),
+            dhw_request=(
+                _optional_bool(value("DhwHeatRequest"))
+                if value("DhwHeatRequest") is not None
+                else None
+            ),
+            heating_curve_offset=(
+                number("HeatingFlowOffset")
+                if value("HeatingFlowOffset") is not None
                 else None
             ),
             has_room_sensor=value("ZoneMeasuredTemp") is not None,

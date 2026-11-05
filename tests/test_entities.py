@@ -75,7 +75,10 @@ def platforms():
         module("homeassistant.components", __path__=[])
         module(
             "homeassistant.components.sensor",
-            SensorDeviceClass=types.SimpleNamespace(TEMPERATURE="temperature", PRESSURE="pressure"),
+            SensorDeviceClass=types.SimpleNamespace(
+                TEMPERATURE="temperature", PRESSURE="pressure", POWER="power",
+                ENERGY="energy", FREQUENCY="frequency",
+            ),
             SensorStateClass=types.SimpleNamespace(MEASUREMENT="measurement"),
             SensorEntity=type("SensorEntity", (Entity,), {}),
             SensorEntityDescription=EntityDescription,
@@ -119,6 +122,10 @@ def platforms():
         monkeypatch.setattr(const, "EntityCategory", types.SimpleNamespace(DIAGNOSTIC="diagnostic", CONFIG="config"), raising=False)
         monkeypatch.setattr(const, "UnitOfPressure", types.SimpleNamespace(BAR="bar"), raising=False)
         monkeypatch.setattr(const, "UnitOfTemperature", types.SimpleNamespace(CELSIUS="°C"), raising=False)
+        monkeypatch.setattr(const, "UnitOfPower", types.SimpleNamespace(WATT="W"), raising=False)
+        monkeypatch.setattr(const, "UnitOfEnergy", types.SimpleNamespace(KILO_WATT_HOUR="kWh"), raising=False)
+        monkeypatch.setattr(const, "UnitOfFrequency", types.SimpleNamespace(HERTZ="Hz"), raising=False)
+        monkeypatch.setattr(const, "UnitOfElectricCurrent", types.SimpleNamespace(AMPERE="A"), raising=False)
         monkeypatch.setattr(const, "ATTR_TEMPERATURE", "temperature", raising=False)
         monkeypatch.setattr(
             sys.modules["homeassistant.helpers.update_coordinator"],

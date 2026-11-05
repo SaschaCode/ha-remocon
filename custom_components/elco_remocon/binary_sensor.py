@@ -68,6 +68,35 @@ BINARY_SENSORS: tuple[ElcoBinarySensorDescription, ...] = (
         value_fn=lambda d: d.heat_or_cool_request,
         exists_fn=lambda d: d.heat_or_cool_request is not None,
     ),
+    # --- Diagnostics (flat R2; no entity when the item is missing) ---
+    ElcoBinarySensorDescription(
+        key="backup_heater",
+        translation_key="backup_heater",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda d: d.backup_heater_on,
+        exists_fn=lambda d: d.backup_heater_on is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="defrost",
+        translation_key="defrost",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda d: d.defrost_active,
+        exists_fn=lambda d: d.defrost_active is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="dhw_request",
+        translation_key="dhw_request",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda d: d.dhw_request,
+        exists_fn=lambda d: d.dhw_request is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="dhw_heating_rod",
+        translation_key="dhw_heating_rod",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda d: d.dhw_heating_rod_on,
+        exists_fn=lambda d: d.dhw_heating_rod_on is not None,
+    ),
 )
 
 

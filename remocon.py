@@ -14,6 +14,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -102,6 +103,38 @@ AJAX_HEADERS = {
 
 # Advanced-settings group written together when toggling quiet mode.
 QUIET_MODE_ITEM_IDS = ("IsQuite", "QuietModeStart", "QuietModeEnd")
+
+# Candidate v2 dataItem IDs probed by `dump-items` (discovery only; the cloud
+# silently ignores unknown IDs). Sources: plan.md hypotheses plus the item map
+# verified on GALEVO/Aerotop MONO plants by karliklukas/ha-elco-remocon.
+DISCOVERY_DATA_ITEM_IDS = [
+    # temperatures
+    "ChFlowTemp", "ChReturnTemp", "ChFlowSetpointTemp", "HeatingFlowTemp",
+    "HpWaterTemp", "OutsideTempHp",
+    # power / energy / heat
+    "HpElectricPower", "ElectricPower", "PowerConsumption", "Em20Power",
+    "HeatProduced", "ThermalPower", "HpThermalPower", "Cop", "ScOP",
+    "EnergyConsumed", "EnergyProduced", "ChEnergyConsumed", "DhwEnergyConsumed",
+    # compressor / modulation
+    "HpCompressorFreq", "HpFrequency", "CompressorFreq", "InverterFrequency",
+    "CompressorModulation", "HpModulation",
+    # backup heater / defrost / requests
+    "HeatingResistance", "IsHeatingResistanceOn", "IsResistorOn", "BackupHeater",
+    "DefrostActive", "IsDefrosting", "DhwHeatRequest", "DhwRequest",
+    "ZoneDhwRequest", "ChHeatRequest",
+    # heating curve / hydraulics
+    "HeatingCurveSlope", "HeatingCurveOffset", "HeatingFlowOffset",
+    "ChReturnSetpointTemp", "FlowRate", "ChFlowRate", "DeltaT",
+]
+
+# menuItems probed individually by `dump-items`. One unsupported number fails
+# the whole request with HTTP 500, so each ID is requested on its own.
+# Known crashers (never request): 132, 306-335, 342-347.
+DISCOVERY_MENU_IDS = (
+    list(range(110, 130)) + [146, 300, 301, 302, 303, 304, 305]
+    + [336, 337, 338, 339, 340, 341, 348, 349]
+    + list(range(350, 361))
+)
 
 # Features payload used for v2 API calls — matches what the web UI sends.
 # This may need adjustment depending on your specific heat pump model.
@@ -381,8 +414,19 @@ class RemoconClient:
 
         if resp.status_code in (401, 403):
             raise SessionExpiredError("Session expired, re-login needed")
+        if not resp.text.strip():
+            # Some gateway endpoints (e.g. unsupported menuItems) answer 200
+            # with an empty body instead of JSON; treat as "no data".
+            return None
+        if resp.status_code >= 400:
+            # e.g. menuItems with an unsupported id -> 500 {"Message": ...}
+            raise NetworkError(f"HTTP {resp.status_code} from {path}: {resp.text[:200]}")
         resp.raise_for_status()
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError:
+            # HTML error pages (404 handler etc.) are not JSON either.
+            raise DataError(f"Non-JSON response ({resp.status_code}) from {path}: {resp.text[:200]}")
 
     # ---- Read operations ----
 
@@ -549,6 +593,122 @@ class RemoconClient:
         for item in data.get("items", []):
             result[item["id"]] = item.get("value")
         return result
+
+    def dump_all_items(self) -> dict:
+        """Discovery dump: every item the gateway exposes on all read surfaces.
+
+        Returns a dict with keys: planthome_full (raw flat R2 items list),
+        data_items (v2 candidate ids), menu_items (per-id), advanced_settings,
+        consumption (EM20 consSequencesApi8), features.
+        """
+        if not self._protocol:
+            self.get_plant_data()
+
+        out: dict[str, Any] = {"protocol": self._protocol}
+
+        # 1. Full flat R2 dump: request everything, not just FLAT_RELEVANT_ITEM_IDS.
+        if self.is_flat_api:
+            try:
+                resp = self._request(
+                    "POST",
+                    f"/R2/PlantHome/GetData/{self.config.gateway_id}",
+                    json={
+                        "useCache": False,
+                        "zone": int(self.config.zone_id),
+                        "filter": {
+                            "notEssentials": False, "plant": True,
+                            "zone": True, "dhw": True, "progIds": [1, 7, 9, 15],
+                        },
+                        "features": self._flat_features(),
+                    },
+                )
+                items = (resp.get("data") or {}).get("items", [])
+                out["planthome_full"] = items
+            except (NetworkError, DataError) as e:
+                out["planthome_full_error"] = str(e)
+            # Non-essentials (status/progId 9) group as a second call.
+            try:
+                resp = self._request(
+                    "POST",
+                    f"/R2/PlantHome/GetData/{self.config.gateway_id}",
+                    json={
+                        "useCache": False,
+                        "zone": int(self.config.zone_id),
+                        "filter": {
+                            "dhw": False, "notEssentials": True,
+                            "plant": False, "progId": 9, "zone": False,
+                        },
+                        "features": self._flat_features(),
+                    },
+                )
+                out["planthome_status"] = (resp.get("data") or {}).get("items", [])
+            except (NetworkError, DataError) as e:
+                out["planthome_status_error"] = str(e)
+
+        # 2. v2 dataItems candidates (unknown ids are silently ignored).
+        try:
+            data = self._request(
+                "POST",
+                f"/api/v2/remote/dataItems/{self.config.gateway_id}/get?umsys=si",
+                json={
+                    "useCache": False,
+                    "items": [
+                        {"id": i, "zn": zn}
+                        for i in DISCOVERY_DATA_ITEM_IDS
+                        for zn in (0, int(self.config.zone_id))
+                    ],
+                    "features": self._v2_features(),
+                    "culture": "de",
+                },
+            )
+            out["data_items"] = data.get("items", [])
+        except (NetworkError, DataError) as e:
+            out["data_items_error"] = str(e)
+
+        # 3. menuItems, each id on its own request (one bad id fails the batch).
+        menu: dict[str, Any] = {}
+        for mid in DISCOVERY_MENU_IDS:
+            try:
+                data = self._request(
+                    "GET",
+                    f"/api/v2/menuItems/{self.config.gateway_id}?menuItems={mid}",
+                )
+                menu[str(mid)] = data if data is not None else "EMPTY"
+            except (NetworkError, DataError) as e:
+                menu[str(mid)] = f"ERROR: {e}"
+        out["menu_items"] = menu
+
+        # 4. Advanced settings (quiet mode group).
+        try:
+            resp = self._request(
+                "POST", f"/R2/PlantAdvancedSettings/Refresh/{self.config.gateway_id}",
+                headers=AJAX_HEADERS, json={"features": self._flat_features()},
+            )
+            out["advanced_settings"] = (resp.get("data") or {}).get("dataItems", [])
+        except (NetworkError, DataError) as e:
+            out["advanced_settings_error"] = str(e)
+
+        # 5. EM20 metering / consumption reports.
+        for usages in ("Ch%2CDhw%2CCooling", "Ch%2CDhw"):
+            try:
+                resp = self._request(
+                    "GET",
+                    f"/api/v2/remote/reports/{self.config.gateway_id}/consSequencesApi8?usages={usages}",
+                )
+                out["consumption"] = resp
+                break
+            except (NetworkError, DataError) as e:
+                out.setdefault("consumption_errors", []).append(f"usages={usages}: {e}")
+
+        # 6. Plant features (capabilities incl. hasMetering/hasEm20).
+        try:
+            out["features"] = self._request(
+                "GET", f"/api/v2/remote/plants/{self.config.gateway_id}/features"
+            )
+        except (NetworkError, DataError) as e:
+            out["features_error"] = str(e)
+
+        return out
 
     @staticmethod
     def _flat_number(items: dict, key: str, default: float = 0.0, attr: str = "value") -> float:
@@ -1354,6 +1514,55 @@ def cmd_raw_get(client: RemoconClient, config: Config, args: argparse.Namespace)
     return 0
 
 
+def _redact(obj: Any) -> Any:
+    """Recursively redact credentials, gateway ids and cookies from a dump."""
+    if isinstance(obj, dict):
+        return {
+            k: ("<REDACTED>" if str(k).lower() in {
+                "email", "password", "usr", "pwd", "gatewayid", "gateway_id",
+                "cookie", "set-cookie", "authorization", "ar.authtoken", "token",
+            } else _redact(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(v) for v in obj]
+    if isinstance(obj, str):
+        # 12-char hex gateway IDs anywhere in a string (incl. inside error
+        # messages like ".../menuItems/0C8B950B67D8?menuItems=351")
+        return re.sub(
+            r"\b[0-9A-Fa-f]{12}\b", "<GWID>", obj
+        )
+    return obj
+
+
+def cmd_dump_items(client: RemoconClient, config: Config, args: argparse.Namespace) -> int:
+    """Dump every readable item from every API surface (Phase 1 discovery).
+
+    With --output FILE the redacted JSON dump is written to tests/fixtures/
+    (or any path) for use as a test fixture. Credentials and the gateway ID
+    are redacted automatically.
+    """
+    dump = client.dump_all_items()
+    dump = _redact(dump)
+    text = json.dumps(dump, indent=2, default=str)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+        n_items = 0
+        for key in ("planthome_full", "planthome_status", "data_items", "advanced_settings"):
+            v = dump.get(key)
+            if isinstance(v, list):
+                n_items += len(v)
+        if isinstance(dump.get("menu_items"), dict):
+            n_items += len(dump["menu_items"])
+        print(
+            f"Wrote redacted dump ({n_items} items across all surfaces) to {args.output}"
+        )
+    else:
+        print(text)
+    return 0
+
+
 def cmd_set_plant_mode(client: RemoconClient, config: Config, args: argparse.Namespace) -> int:
     client.set_plant_mode(args.mode)
     print(f"Plant mode set to: {args.mode}")
@@ -1435,6 +1644,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_raw = sub.add_parser("raw-get", help="Fetch raw API response (debug)")
     _add_config_args(p_raw)
 
+    # dump-items (Phase 1 discovery)
+    p_dump = sub.add_parser(
+        "dump-items",
+        help="Dump every readable API item (full flat R2, v2 dataItems, menuItems, "
+             "advanced settings, EM20 metering) with credentials redacted",
+    )
+    p_dump.add_argument(
+        "--output", type=str, default=None,
+        help="Write the redacted dump as JSON to this file (e.g. tests/fixtures/dump.json)",
+    )
+    _add_config_args(p_dump)
+
     return parser
 
 
@@ -1485,6 +1706,7 @@ def main() -> int:
                 "set-quiet-mode": cmd_set_quiet_mode,
                 "set-dhw-boost": cmd_set_dhw_boost,
                 "raw-get": cmd_raw_get,
+                "dump-items": cmd_dump_items,
             }[args.command]
             return cmd_func(client, config, args)
         except SessionExpiredError:

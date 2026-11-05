@@ -13,7 +13,15 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfEnergy,
+    UnitOfFrequency,
+    UnitOfPower,
+    UnitOfPressure,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -109,6 +117,117 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda d: d.dhw_reduced_temp,
         exists_fn=lambda d: d.dhw_reduced_temp is not None,
+    ),
+    # Diagnostics (flat R2 gateways; no entity when the item is missing) ---
+    ElcoSensorDescription(
+        key="flow_setpoint_temp",
+        translation_key="flow_setpoint_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: d.flow_setpoint_temperature,
+        exists_fn=lambda d: d.flow_setpoint_temperature is not None,
+    ),
+    ElcoSensorDescription(
+        key="hp_outside_temp",
+        translation_key="hp_outside_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.hp_outside_temp,
+        exists_fn=lambda d: d.hp_outside_temp is not None,
+    ),
+    ElcoSensorDescription(
+        key="return_temp",
+        translation_key="return_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: d.return_temperature,
+        exists_fn=lambda d: d.return_temperature is not None,
+    ),
+    ElcoSensorDescription(
+        key="room_temp",
+        translation_key="room_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda d: d.room_temp if d.room_temp > 0 else None,
+        exists_fn=lambda d: d.has_room_sensor,
+    ),
+    ElcoSensorDescription(
+        key="power",
+        translation_key="power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        suggested_display_precision=0,
+        value_fn=lambda d: d.power_w,
+        exists_fn=lambda d: d.power_w is not None,
+    ),
+    ElcoSensorDescription(
+        key="compressor_freq",
+        translation_key="compressor_frequency",
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.compressor_freq_hz,
+        exists_fn=lambda d: d.compressor_freq_hz is not None,
+    ),
+    ElcoSensorDescription(
+        key="hp_water_temp",
+        translation_key="hp_water_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.hp_water_temperature,
+        exists_fn=lambda d: d.hp_water_temperature is not None,
+    ),
+    ElcoSensorDescription(
+        key="heating_curve_offset",
+        translation_key="heating_curve_offset",
+        native_unit_of_measurement="K",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.heating_curve_offset,
+        exists_fn=lambda d: d.heating_curve_offset is not None,
+    ),
+    # EM20 metering. The cloud reports per-bucket kWh (last 48 h of 2 h
+    # buckets); the value here is the sum over that window. For a monotonic
+    # lifetime counter use the recorder statistics / Energy dashboard, which
+    # HA derives from TOTAL_INCREASING state changes is NOT possible here —
+    # instead these are windowed totals, so state_class stays None and the
+    # energy dashboard is fed via the consumption report statistics instead.
+    ElcoSensorDescription(
+        key="energy_consumed_ch",
+        translation_key="energy_consumed_ch",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.energy_consumed_ch_kwh,
+        exists_fn=lambda d: d.energy_consumed_ch_kwh is not None,
+    ),
+    ElcoSensorDescription(
+        key="energy_consumed_dhw",
+        translation_key="energy_consumed_dhw",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.energy_consumed_dhw_kwh,
+        exists_fn=lambda d: d.energy_consumed_dhw_kwh is not None,
+    ),
+    ElcoSensorDescription(
+        key="energy_consumed_total",
+        translation_key="energy_consumed_total",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda d: d.energy_consumed_total_kwh,
+        exists_fn=lambda d: d.energy_consumed_total_kwh is not None,
     ),
 )
 

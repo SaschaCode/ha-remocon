@@ -18,6 +18,17 @@
       "no_data": "No data received from the system. Is the Gateway ID correct?"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Remocon-Net options",
+        "description": "Poll interval in seconds. 60 s resolves 10-minute heat-pump run phases well; the default is 120 s.",
+        "data": {
+          "scan_interval": "Poll interval (seconds, 30–600)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "outside_temperature": {
@@ -43,6 +54,39 @@
       },
       "dhw_reduced_temp": {
         "name": "DHW Reduced Temperature"
+      },
+      "flow_setpoint_temperature": {
+        "name": "Flow Setpoint Temperature"
+      },
+      "return_temperature": {
+        "name": "Return Temperature"
+      },
+      "room_temperature": {
+        "name": "Room Temperature"
+      },
+      "power": {
+        "name": "Power"
+      },
+      "compressor_frequency": {
+        "name": "Compressor Frequency"
+      },
+      "hp_water_temperature": {
+        "name": "Heat Pump Water Temperature"
+      },
+      "heating_curve_offset": {
+        "name": "Heating Curve Offset"
+      },
+      "energy_consumed_ch": {
+        "name": "Energy Consumed (Heating, 48 h)"
+      },
+      "energy_consumed_dhw": {
+        "name": "Energy Consumed (DHW, 48 h)"
+      },
+      "energy_consumed_total": {
+        "name": "Energy Consumed (Total, 48 h)"
+      },
+      "hp_outside_temperature": {
+        "name": "Outside Temperature (Heat Pump)"
       }
     },
     "binary_sensor": {
@@ -51,6 +95,18 @@
       },
       "heat_or_cool_request": {
         "name": "Heating/Cooling Request"
+      },
+      "backup_heater": {
+        "name": "Backup Heater (Heizstab)"
+      },
+      "defrost": {
+        "name": "Defrost"
+      },
+      "dhw_request": {
+        "name": "DHW Request"
+      },
+      "dhw_heating_rod": {
+        "name": "DHW Heating Rod"
       }
     },
     "number": {

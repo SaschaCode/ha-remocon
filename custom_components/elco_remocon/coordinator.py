@@ -12,7 +12,13 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import RemoconAuthError, RemoconClient, RemoconConnectionError, RemoconData
-from .const import CONF_GATEWAY_ID, CONF_ZONE, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_GATEWAY_ID,
+    CONF_SCAN_INTERVAL,
+    CONF_ZONE,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,12 +31,15 @@ class ElcoRemoconCoordinator(DataUpdateCoordinator[RemoconData]):
         hass: HomeAssistant,
         config_entry: ConfigEntry,
     ) -> None:
+        scan_interval = int(
+            config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
             config_entry=config_entry,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
             always_update=False,
         )
         self.client = RemoconClient(
