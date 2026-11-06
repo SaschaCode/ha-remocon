@@ -563,14 +563,39 @@ class RemoconClient:
         return {item["id"]: item.get("value") for item in data.get("items", [])} if isinstance(data, dict) else {}
 
     def _get_menu_items(self) -> dict[int, Any]:
-        """Read numbered menuItems, each ID in its own request.
+        """Read numbered menuItems for flat-R2 diagnostics.
 
-        One unsupported number fails the whole batch with HTTP 500, so IDs
-        are requested individually and failures are isolated per ID.
+        All IDs in FLAT_MENU_ITEM_IDS are live-verified on the Aerotop MONO
+        15.2 ODU gateway, so they are requested in ONE batched call (~3 s).
+        If the batch fails (e.g. a different plant where one ID is unsupported
+        and 500s the whole request), fall back to per-ID requests so a single
+        bad ID cannot break the others.
         Returns {menu_id: item-dict}; missing/failed IDs are absent.
         """
-        out: dict[int, Any] = {}
-        for menu_id in FLAT_MENU_ITEM_IDS:
+        ids = list(FLAT_MENU_ITEM_IDS)
+        try:
+            data = self._request(
+                "GET",
+                f"/api/v2/menuItems/{self._gateway_id}?menuItems={','.join(map(str, ids))}",
+            )
+            if isinstance(data, list):
+                out = {
+                    int(item["id"]): item
+                    for item in data
+                    if isinstance(item, dict) and item.get("id") is not None
+                    and int(item["id"]) in set(ids)
+                }
+                if len(out) == len(ids):
+                    return out
+                _LOGGER.debug(
+                    "Batched menuItems returned %d/%d IDs, falling back to per-ID", len(out), len(ids)
+                )
+        except (RemoconConnectionError, RemoconDataError) as err:
+            _LOGGER.debug("Batched menuItems request failed, falling back to per-ID: %s", err)
+        # Fallback: one request per ID (a single unsupported number fails the
+        # whole batch with HTTP 500 on some plants).
+        out = {}
+        for menu_id in ids:
             try:
                 data = self._request(
                     "GET",
@@ -757,8 +782,14 @@ class RemoconClient:
                 data.defrost_active = True
             if int(mode) in (4, 5):
                 data.backup_heater_on = True
-        # 348: heat pump water (flow) temperature, measured at the HP
+        # 348: heat pump water (flow) temperature at the HP outlet,
+        # continuousRead=true -> the LIVE measured flow temperature on
+        # Aerotop MONO. The v2 HeatingFlowTemp dataItem lags (slow gateway
+        # refresh), so menuItem 348 wins when present.
         data.hp_water_temperature = cls._menu_number(menu_items, 348)
+        live_flow = cls._menu_number(menu_items, 348)
+        if live_flow is not None:
+            data.flow_temperature = live_flow
         # 391: CH flow setpoint (backup if ChFlowSetpointTemp missing)
         flow_sp = cls._menu_number(menu_items, 391)
         if flow_sp is not None and data.flow_setpoint_temperature is None:
@@ -908,13 +939,12 @@ class RemoconClient:
                 if value("HeatingCircuitPressure") is not None
                 else None
             ),
-            # Measured flow temperature. Live-verified on this gateway family:
-            # HeatingFlowTemp (v2 dataItem) is the reliable source; ChFlowTemp
-            # is tried as a fallback for other GALEVO plants. menuItem 349 is
-            # deliberately NOT used (returns raw sentinel 3276.0 on Aerotop MONO).
-            # If neither is present, fall back to the setpoint so the existing
-            # flow_temp entity keeps a value (its setpoint fallback is documented
-            # in sensor.py).
+            # Measured flow temperature at the heat pump outlet. Live-verified on
+            # Aerotop MONO 15.2 ODU: menuItem 348 (T_13.8.1, continuousRead=true)
+            # is the truly live sensor; the v2 dataItem HeatingFlowTemp (zn=zone)
+            # is only refreshed by the gateway on a slow cadence and can lag.
+            # ChFlowTemp is tried as a fallback for other GALEVO plants.
+            # menuItem 349 is deliberately NOT used (raw sentinel 3276.0 here).
             flow_temperature=(
                 number("HeatingFlowTemp")
                 if value("HeatingFlowTemp") is not None

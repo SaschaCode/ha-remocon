@@ -98,8 +98,9 @@ def test_menu_items_overlay_hp_mode_flow_and_temps():
     assert data.defrost_active is None  # live mode is not defrost
     assert data.hp_water_temperature == menu[348]["value"]
     assert data.hp_outside_temp == menu[341]["value"]
-    # menuItem 349 (sentinel 3276.0) must NOT leak into flow_temperature
-    assert data.flow_temperature == 40.0      # HeatingFlowTemp dataItem
+    # menuItem 348 (continuousRead) is the LIVE flow temp and wins over the
+    # lagging v2 HeatingFlowTemp dataItem; menuItem 349 sentinel never leaks in
+    assert data.flow_temperature == menu[348]["value"]
     assert data.flow_setpoint_temperature == 52.0  # ChFlowSetpointTemp
 
 
@@ -188,10 +189,16 @@ def test_get_data_flat_includes_diagnostics_and_metering():
 
     def fake_request(method, path, **kwargs):
         if "menuItems=" in path:
+            if "," in path.split("menuItems=")[1]:
+                # batched call: return all requested ids that exist
+                ids = [int(x) for x in path.split("menuItems=")[1].split(",")]
+                return [menu[m] for m in ids if m in menu]
             mid = int(path.split("menuItems=")[1])
             return [menu[mid]] if mid in menu else []
         if "consSequencesApi8" in path:
             return cons
+        if "dataItems" in path:
+            return {"items": []}
         return _flat_response(items)
 
     with patch.object(client, "_request", side_effect=fake_request):
@@ -202,7 +209,8 @@ def test_get_data_flat_includes_diagnostics_and_metering():
     assert data.hp_mode == 1                     # menuItem 340 = Standby in the live dump
     ch48 = consumption_from_fixture()[(CONSUMPTION_KIND_CH, CONSUMPTION_PERIOD_BUCKETS)]
     assert data.energy_consumed_ch_kwh == pytest.approx(sum(ch48), abs=1e-6)
-    assert data.flow_temperature == 40.0
+    menu = menu_items_from_fixture()
+    assert data.flow_temperature == menu[348]["value"]  # live menuItem 348 wins
     assert data.flow_setpoint_temperature == 52.0
 
 
@@ -212,7 +220,7 @@ def test_get_data_flat_survives_menu_and_metering_failures():
     items = flat_items_from_fixture()
 
     def fake_request(method, path, **kwargs):
-        if "menuItems=" in path or "consSequencesApi8" in path:
+        if "menuItems=" in path or "consSequencesApi8" in path or "dataItems" in path:
             raise RuntimeError("boom")
         return _flat_response(items)
 
@@ -220,7 +228,8 @@ def test_get_data_flat_survives_menu_and_metering_failures():
         data = client.get_data()  # must not raise
 
     assert data.comfort_temp == 21.0
-    assert data.flow_temperature == 40.0   # from dataItems still works
+    # HeatingFlowTemp is present in the flat items (fixture merge), so flow shows it
+    assert data.flow_temperature == 40.0
     assert data.backup_heater_on is None   # menuItems failed -> None
     assert data.energy_consumed_ch_kwh is None
 
@@ -237,6 +246,8 @@ def test_metering_is_rate_limited():
             return load_fixture()["consumption"]
         if "menuItems=" in path:
             return []
+        if "dataItems" in path:
+            return {"items": []}
         return _flat_response(items)
 
     with patch.object(client, "_request", side_effect=fake_request):
