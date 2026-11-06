@@ -288,7 +288,7 @@ def _stub_sensor_platform_modules():
         "homeassistant.components.sensor",
         SensorDeviceClass=types.SimpleNamespace(
             TEMPERATURE="temperature", PRESSURE="pressure", POWER="power",
-            ENERGY="energy", FREQUENCY="frequency",
+            ENERGY="energy", FREQUENCY="frequency", ENUM="enum",
         ),
         SensorStateClass=types.SimpleNamespace(MEASUREMENT="measurement", TOTAL_INCREASING="total_increasing"),
         SensorEntity=type("SensorEntity", (Entity,), {}),
@@ -540,7 +540,9 @@ def test_hp_mode_sensor_is_text_not_numeric():
     import types
     from custom_components.elco_remocon.sensor import SENSORS, ElcoSensor
     desc = {x.key: x for x in SENSORS}["hp_mode"]
-    assert desc.device_class is None and desc.native_unit_of_measurement is None
+    assert str(desc.device_class) == "enum" or desc.device_class == "enum"
+    assert desc.options and "heating" in desc.options and "defrost" in desc.options
+    assert desc.native_unit_of_measurement is None
     # CoordinatorEntity stub accepts the coordinator; patch __init__ chain by
     # constructing via __new__ and setting attrs manually (stub base has no __init__ args).
     ent = ElcoSensor.__new__(ElcoSensor)
@@ -548,10 +550,10 @@ def test_hp_mode_sensor_is_text_not_numeric():
     ent.entity_description = desc
     if desc.icon:
         ent._attr_icon = desc.icon
-    if desc.device_class is None and desc.native_unit_of_measurement is None:
-        ent._attr_suggested_display_precision = None
+    if desc.options is not None:
+        ent._attr_options = desc.options
     ent._attr_unique_id = "GW123_hp_mode"
-    assert ent._attr_suggested_display_precision is None
+    assert ent._attr_options is not None
     assert ent.entity_description.value_fn(ent.coordinator.data) == "heating"
 
 

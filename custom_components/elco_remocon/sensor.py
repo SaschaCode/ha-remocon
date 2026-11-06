@@ -70,6 +70,7 @@ class ElcoSensorDescription(SensorEntityDescription):
     entity_category: EntityCategory | None = None
     suggested_display_precision: int | None = 1
     icon: str | None = None
+    options: list[str] | None = None  # for ENUM device class
     # When True and the gateway uses the flat R2 API, the entity is always
     # created at setup (the source item is live-verified on that family), even
     # if the very first poll could not fetch it yet; the state then shows
@@ -230,12 +231,11 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
         key="hp_mode",
         translation_key="hp_mode",
         icon="mdi:heat-pump-outline",
+        device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
         create_on_flat=True,  # menuItem 340 verified live on flat R2 gateways
-        # Text/enum sensor: NO device_class, NO state_class, NO unit — the
-        # dataclass default suggested_display_precision=1 makes HA treat the
-        # value as numeric and crash on the string state ('heating').
-        suggested_display_precision=0,
+        # Enum sensor: HA treats the value as text (options below), never numeric.
+        options=list(dict.fromkeys(HP_MODE_MAP.values())),
         value_fn=lambda d: (
             HP_MODE_MAP.get(d.hp_mode, str(d.hp_mode)) if d.hp_mode is not None else None
         ),
@@ -328,6 +328,8 @@ class ElcoSensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity):
         # raise ValueError on string states (e.g. 'heating').
         if description.device_class is None and description.native_unit_of_measurement is None:
             self._attr_suggested_display_precision = None
+        if description.options is not None:
+            self._attr_options = description.options
         self._attr_unique_id = entity_unique_id(gw_id, zone, description.key)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},

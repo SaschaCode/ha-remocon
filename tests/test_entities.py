@@ -77,7 +77,7 @@ def platforms():
             "homeassistant.components.sensor",
             SensorDeviceClass=types.SimpleNamespace(
                 TEMPERATURE="temperature", PRESSURE="pressure", POWER="power",
-                ENERGY="energy", FREQUENCY="frequency",
+                ENERGY="energy", FREQUENCY="frequency", ENUM="enum",
             ),
             SensorStateClass=types.SimpleNamespace(MEASUREMENT="measurement"),
             SensorEntity=type("SensorEntity", (Entity,), {}),
