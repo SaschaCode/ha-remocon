@@ -68,8 +68,14 @@ class ElcoSensorDescription(SensorEntityDescription):
     state_class: SensorStateClass | None = None
     native_unit_of_measurement: str | None = None
     entity_category: EntityCategory | None = None
-    suggested_display_precision: int = 1
+    suggested_display_precision: int | None = 1
     icon: str | None = None
+    # When True and the gateway uses the flat R2 API, the entity is always
+    # created at setup (the source item is live-verified on that family), even
+    # if the very first poll could not fetch it yet; the state then shows
+    # unknown until the first successful menuItems read instead of the entity
+    # never appearing.
+    create_on_flat: bool = False
     value_fn: Callable[[RemoconData], StateType]
     exists_fn: Callable[[RemoconData], bool] = lambda _: True
 
@@ -165,6 +171,7 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
+        create_on_flat=True,  # menuItem verified live on flat R2 gateways
         value_fn=lambda d: d.hp_outside_temp,
         exists_fn=lambda d: d.hp_outside_temp is not None,
     ),
@@ -215,6 +222,7 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
+        create_on_flat=True,  # menuItem verified live on flat R2 gateways
         value_fn=lambda d: d.hp_water_temperature,
         exists_fn=lambda d: d.hp_water_temperature is not None,
     ),
@@ -223,6 +231,11 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
         translation_key="hp_mode",
         icon="mdi:heat-pump-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
+        create_on_flat=True,  # menuItem 340 verified live on flat R2 gateways
+        # Text/enum sensor: NO device_class, NO state_class, NO unit — the
+        # dataclass default suggested_display_precision=1 makes HA treat the
+        # value as numeric and crash on the string state ('heating').
+        suggested_display_precision=0,
         value_fn=lambda d: (
             HP_MODE_MAP.get(d.hp_mode, str(d.hp_mode)) if d.hp_mode is not None else None
         ),
@@ -284,10 +297,11 @@ async def async_setup_entry(
     gw_id = entry.data["gateway_id"]
     zone = entry.data.get(CONF_ZONE, DEFAULT_ZONE)
 
+    flat = coordinator.client.is_flat_api
     entities = [
         ElcoSensor(coordinator, gw_id, zone, desc)
         for desc in SENSORS
-        if desc.exists_fn(coordinator.data)
+        if desc.exists_fn(coordinator.data) or (flat and desc.create_on_flat)
     ]
     async_add_entities(entities)
 
@@ -309,6 +323,11 @@ class ElcoSensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity):
         self.entity_description = description
         if description.icon:
             self._attr_icon = description.icon
+        # A text/enum sensor (no device_class, no unit) must not carry
+        # suggested_display_precision: HA would treat its state as numeric and
+        # raise ValueError on string states (e.g. 'heating').
+        if description.device_class is None and description.native_unit_of_measurement is None:
+            self._attr_suggested_display_precision = None
         self._attr_unique_id = entity_unique_id(gw_id, zone, description.key)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},

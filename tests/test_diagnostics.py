@@ -531,3 +531,34 @@ def test_energy_values_carry_over_between_metering_polls():
         assert d1.energy_consumed_total_kwh is not None
         d2 = client.get_data()  # within METERING_POLL_INTERVAL -> carried over
         assert d2.energy_consumed_total_kwh == d1.energy_consumed_total_kwh
+
+
+def test_hp_mode_sensor_is_text_not_numeric():
+    """Regression: hp_mode returns a string ('heating'); the entity must not set
+    suggested_display_precision (HA would crash: 'non-numeric value: heating')."""
+    _stub_sensor_platform_modules()
+    import types
+    from custom_components.elco_remocon.sensor import SENSORS, ElcoSensor
+    desc = {x.key: x for x in SENSORS}["hp_mode"]
+    assert desc.device_class is None and desc.native_unit_of_measurement is None
+    # CoordinatorEntity stub accepts the coordinator; patch __init__ chain by
+    # constructing via __new__ and setting attrs manually (stub base has no __init__ args).
+    ent = ElcoSensor.__new__(ElcoSensor)
+    ent.coordinator = types.SimpleNamespace(data=RemoconData(hp_mode=3))
+    ent.entity_description = desc
+    if desc.icon:
+        ent._attr_icon = desc.icon
+    if desc.device_class is None and desc.native_unit_of_measurement is None:
+        ent._attr_suggested_display_precision = None
+    ent._attr_unique_id = "GW123_hp_mode"
+    assert ent._attr_suggested_display_precision is None
+    assert ent.entity_description.value_fn(ent.coordinator.data) == "heating"
+
+
+def test_numeric_sensors_keep_precision():
+    _stub_sensor_platform_modules()
+    import types
+    from custom_components.elco_remocon.sensor import SENSORS
+    desc = {x.key: x for x in SENSORS}["power"]
+    assert desc.device_class is not None  # numeric sensor keeps precision
+    assert desc.value_fn(RemoconData(power_w=1850.0)) == 1850.0
