@@ -90,6 +90,15 @@ DHW_WRITE_OPTIONAL_ITEM_IDS = (
 )
 DHW_WRITE_ITEM_IDS = DHW_WRITE_REQUIRED_ITEM_IDS + DHW_WRITE_OPTIONAL_ITEM_IDS
 
+# Weekly time programs (R2 PlantTimeProg). progId map live-probed on GALEVO
+# gateways: 1-3 = heating zones, 7 = DHW; 4-6 are buffer candidates and are
+# only used when they return a real (non-placeholder) plan.
+TIME_PROG_HEATING_IDS = (1, 2, 3)
+TIME_PROG_DHW_ID = 7
+TIME_PROG_BUFFER_CANDIDATE_IDS = (4, 5, 6)
+TIME_PROG_WRITABLE_IDS = frozenset({*TIME_PROG_HEATING_IDS, TIME_PROG_DHW_ID})
+SCHEDULE_MAX_BLOCKS = 3
+
 # AJAX headers the R2 web app sends with every postJson/getJson call.
 AJAX_HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -190,6 +199,8 @@ class RemoconData:
     flow_temperature: Optional[float] = None
     # Meta
     has_room_sensor: bool = False
+    # Weekly time programs keyed by progId (flat-R2 gateways only)
+    time_progs: dict[int, Any] = field(default_factory=dict)
 
 
 class RemoconClient:
@@ -204,6 +215,7 @@ class RemoconClient:
         self._planthome_variant: _PlantHomeVariant | None = None
         self._flat_api = False
         self._last_logged_variant: _PlantHomeVariant | Literal["flat"] | None = None
+        self._last_time_progs: dict[int, Any] = {}
 
     @property
     def is_flat_api(self) -> bool:
@@ -506,7 +518,7 @@ class RemoconClient:
         raw = self._get_raw()
         if not isinstance(raw, dict):
             raise RemoconDataError(f"Unexpected data format from API: {type(raw)}")
-            
+
         if self._flat_api:
             return self._flat_data(raw)
         plant = raw.get("plantData") or {}
@@ -705,6 +717,305 @@ class RemoconClient:
         if not isfinite(temperature):
             raise RemoconDataError(message)
         return temperature
+
+    # ------------------------------------------------------------------
+    # Weekly time programs (R2 PlantTimeProg) — HAR-verified read/write.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _time_prog_payload(prog_id: int) -> dict[str, Any]:
+        return {
+            "progId": prog_id,
+            "features": {**FLAT_FEATURES_PAYLOAD, "gatewayId": ""},
+            "filters": {
+                "timeProg": True,
+                "temperatures": True,
+                "automaticThermoregulation": True,
+            },
+            "useCache": False,
+        }
+
+    def get_time_prog(self, prog_id: int) -> dict[str, Any] | None:
+        """Read one weekly time program via R2 PlantTimeProg/GetData.
+
+        Returns the ``data`` dict (containing ``timeProg.weeklyPlan`` and
+        metadata such as ``allowedTemp``/``maxSwitches``), or None when the
+        gateway has no real program for this id.
+        """
+        if not self._flat_api:
+            raise RemoconDataError("Time programs require the flat R2 API")
+        payload = self._time_prog_payload(prog_id)
+        payload["features"]["gatewayId"] = self._gateway_id
+        response = self._request(
+            "POST",
+            f"/R2/PlantTimeProg/GetData/{self._gateway_id}?umsys=si",
+            api_variant="flat",
+            json=payload,
+        )
+        if not isinstance(response, dict) or not response.get("ok", True):
+            return None
+        data = response.get("data")
+        if not isinstance(data, dict):
+            return None
+        time_prog = data.get("timeProg")
+        if not isinstance(time_prog, dict):
+            return None
+        weekly = time_prog.get("weeklyPlan")
+        if not isinstance(weekly, dict) or not weekly.get("plans"):
+            return None
+        return data
+
+    def get_time_progs(self) -> dict[int, Any]:
+        """Read all relevant weekly programs; carry over the last good read
+        when a single program is temporarily unreadable."""
+        result: dict[int, Any] = dict(self._last_time_progs)
+        candidate_ids = (*TIME_PROG_HEATING_IDS, TIME_PROG_DHW_ID,
+                         *TIME_PROG_BUFFER_CANDIDATE_IDS)
+        for prog_id in candidate_ids:
+            try:
+                data = self.get_time_prog(prog_id)
+            except (RemoconConnectionError, RemoconDataError) as err:
+                _LOGGER.debug("Time program %s unreadable: %s", prog_id, err)
+                continue
+            if data is None:
+                result.pop(prog_id, None)
+                continue
+            # Reject placeholder plans (gateway answers those for progIds
+            # without a real program): every day carries a single slice.
+            weekly = data["timeProg"]["weeklyPlan"]
+            plans = weekly.get("plans") or []
+            day_slice_counts = [
+                len(d.get("slices") or [])
+                for p in plans for d in (p.get("days") or [])
+            ]
+            if (
+                prog_id in TIME_PROG_BUFFER_CANDIDATE_IDS
+                and day_slice_counts
+                and max(day_slice_counts) <= 1
+            ):
+                result.pop(prog_id, None)
+                continue
+            result[prog_id] = data
+        self._last_time_progs = result
+        return result
+
+    @staticmethod
+    def _minutes_to_str(minutes: int) -> str:
+        return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+    @staticmethod
+    def _str_to_minutes(value: Any) -> int:
+        text = str(value).strip()
+        parts = text.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid time {value!r}, expected HH:MM")
+        hours, minutes = int(parts[0]), int(parts[1])
+        if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+            raise ValueError(f"Invalid time {value!r}, expected HH:MM")
+        return hours * 60 + minutes
+
+    def set_time_prog_slice(
+        self, prog_id: int, day: int, comfort_start: str, comfort_end: str
+    ) -> None:
+        """Replace one day's slices with a single comfort block, exactly like
+        the web UI: [{0: reduced}, {start: comfort}, {end: reduced}].
+
+        The whole weeklyPlan is rebuilt (days with identical slices grouped
+        into one plan entry) and POSTed to SetTimeProg, then read back.
+        """
+        if prog_id not in TIME_PROG_WRITABLE_IDS:
+            raise RemoconDataError(
+                f"Time program {prog_id} is not writable on this gateway"
+            )
+        if not (0 <= day <= 6):
+            raise RemoconDataError(f"Invalid day {day}, expected 0 (Sunday) - 6")
+        start = self._str_to_minutes(comfort_start)
+        end = self._str_to_minutes(comfort_end)
+        if start >= end:
+            raise RemoconDataError(
+                f"Comfort start ({comfort_start}) must be before end ({comfort_end})"
+            )
+
+        current = self.get_time_prog(prog_id)
+        if current is None:
+            raise RemoconDataError(f"Time program {prog_id} is not available")
+        time_prog = current["timeProg"]
+        weekly = time_prog["weeklyPlan"]
+        allowed_temp = weekly.get("allowedTemp") or [0, 1]
+        if 1 not in allowed_temp:
+            raise RemoconDataError("Gateway program has no comfort temperature level")
+        reduced_idx = allowed_temp.index(0) if 0 in allowed_temp else 0
+        comfort_idx = allowed_temp.index(1)
+        max_switches = int(weekly.get("maxSwitches") or 6)
+        # 3 slices = 2 switches for a single comfort block; the web UI pads
+        # with a trailing reduced slice when maxSwitches allows more.
+        if 2 > max_switches:
+            raise RemoconDataError(
+                f"Program allows only {max_switches} switches per day"
+            )
+
+        new_slices = [
+            {"from": 0, "temp": reduced_idx},
+            {"from": start, "temp": comfort_idx},
+            {"from": end, "temp": reduced_idx},
+        ]
+        day_slices: dict[int, list[dict[str, Any]]] = {}
+        for plan in weekly.get("plans") or []:
+            for plan_day in plan.get("days") or []:
+                try:
+                    day_num = int(plan_day.get("day"))
+                except (TypeError, ValueError):
+                    continue
+                day_slices[day_num] = plan_day.get("slices") or []
+        day_slices[day] = new_slices
+
+        # Regroup days with identical slices into plan entries (web UI shape).
+        groups: list[tuple[tuple, list[int]]] = []
+        for day_num in range(7):
+            slices = day_slices.get(day_num, [{"from": 0, "temp": reduced_idx}])
+            key = tuple((s.get("from"), s.get("temp")) for s in slices)
+            for group_key, days in groups:
+                if group_key == key:
+                    days.append(day_num)
+                    break
+            else:
+                groups.append((key, [day_num]))
+        plans = [
+            {"days": [{"day": d, "slices": day_slices[d]} for d in days]}
+            for _, days in groups
+        ]
+
+        payload = self._time_prog_payload(prog_id)
+        payload["features"]["gatewayId"] = self._gateway_id
+        payload["timeProg"] = {
+            "progId": prog_id,
+            "weeklyPlan": {**weekly, "plans": plans},
+        }
+        response = self._request(
+            "POST",
+            f"/R2/PlantTimeProg/SetTimeProg/{self._gateway_id}?umsys=si",
+            api_variant="flat",
+            json=payload,
+        )
+        if not isinstance(response, dict) or not response.get("ok", True):
+            message = response.get("message") if isinstance(response, dict) else None
+            raise RemoconDataError(message or "SetTimeProg rejected the write")
+
+        # Read-back verification.
+        for attempt in range(3):
+            verified = self.get_time_prog(prog_id)
+            if verified is not None:
+                for plan in verified["timeProg"]["weeklyPlan"].get("plans") or []:
+                    for plan_day in plan.get("days") or []:
+                        if int(plan_day.get("day", -1)) == day:
+                            got = [(s.get("from"), s.get("temp"))
+                                   for s in plan_day.get("slices") or []]
+                            want = [(s["from"], s["temp"]) for s in new_slices]
+                            if got == want:
+                                self._last_time_progs[prog_id] = verified
+                                return
+            time.sleep(1)
+        raise RemoconDataError(
+            f"Write to time program {prog_id} day {day} could not be confirmed"
+        )
+
+    def set_time_prog_week(
+        self, prog_id: int, blocks: list[tuple[str, str]]
+    ) -> None:
+        """Apply the same comfort blocks to every day of the week.
+
+        ``blocks`` is a list of (start, end) HH:MM pairs (max
+        SCHEDULE_MAX_BLOCKS); each day becomes reduced/comfort/.../reduced.
+        """
+        if prog_id not in TIME_PROG_WRITABLE_IDS:
+            raise RemoconDataError(
+                f"Time program {prog_id} is not writable on this gateway"
+            )
+        if not blocks:
+            raise RemoconDataError("At least one time block is required")
+        if len(blocks) > SCHEDULE_MAX_BLOCKS:
+            raise RemoconDataError(
+                f"At most {SCHEDULE_MAX_BLOCKS} time blocks are supported"
+            )
+        parsed = []
+        for start, end in blocks:
+            start_m = self._str_to_minutes(start)
+            end_m = self._str_to_minutes(end)
+            if start_m >= end_m:
+                raise RemoconDataError(
+                    f"Block start ({start}) must be before end ({end})"
+                )
+            parsed.append((start_m, end_m))
+        parsed.sort()
+        for (s1, e1), (s2, _) in zip(parsed, parsed[1:]):
+            if s2 < e1:
+                raise RemoconDataError("Time blocks must not overlap")
+
+        current = self.get_time_prog(prog_id)
+        if current is None:
+            raise RemoconDataError(f"Time program {prog_id} is not available")
+        weekly = current["timeProg"]["weeklyPlan"]
+        allowed_temp = weekly.get("allowedTemp") or [0, 1]
+        if 1 not in allowed_temp:
+            raise RemoconDataError("Gateway program has no comfort temperature level")
+        reduced_idx = allowed_temp.index(0) if 0 in allowed_temp else 0
+        comfort_idx = allowed_temp.index(1)
+        max_switches = int(weekly.get("maxSwitches") or 6)
+        if 2 * len(parsed) > max_switches:
+            raise RemoconDataError(
+                f"{len(parsed)} blocks need {2 * len(parsed)} switches, "
+                f"program allows {max_switches}"
+            )
+
+        new_slices = [{"from": 0, "temp": reduced_idx}]
+        for start_m, end_m in parsed:
+            new_slices.append({"from": start_m, "temp": comfort_idx})
+            new_slices.append({"from": end_m, "temp": reduced_idx})
+
+        day_slices = {day: new_slices for day in range(7)}
+        plans = [{"days": [{"day": d, "slices": new_slices} for d in range(7)]}]
+
+        payload = self._time_prog_payload(prog_id)
+        payload["features"]["gatewayId"] = self._gateway_id
+        payload["timeProg"] = {
+            "progId": prog_id,
+            "weeklyPlan": {**weekly, "plans": plans},
+        }
+        response = self._request(
+            "POST",
+            f"/R2/PlantTimeProg/SetTimeProg/{self._gateway_id}?umsys=si",
+            api_variant="flat",
+            json=payload,
+        )
+        if not isinstance(response, dict) or not response.get("ok", True):
+            message = response.get("message") if isinstance(response, dict) else None
+            raise RemoconDataError(message or "SetTimeProg rejected the write")
+
+        for attempt in range(3):
+            verified = self.get_time_prog(prog_id)
+            if verified is not None:
+                want = [(s["from"], s["temp"]) for s in new_slices]
+                seen_days: set[int] = set()
+                ok = True
+                for plan in verified["timeProg"]["weeklyPlan"].get("plans") or []:
+                    for plan_day in plan.get("days") or []:
+                        try:
+                            day_num = int(plan_day.get("day", -1))
+                        except (TypeError, ValueError):
+                            ok = False
+                            continue
+                        seen_days.add(day_num)
+                        got = [(s.get("from"), s.get("temp"))
+                               for s in plan_day.get("slices") or []]
+                        if got != want:
+                            ok = False
+                if ok and seen_days == set(range(7)):
+                    self._last_time_progs[prog_id] = verified
+                    return
+            time.sleep(1)
+        raise RemoconDataError(
+            f"Write to time program {prog_id} could not be confirmed"
+        )
 
     def set_zone_temperatures(
         self, comfort: float | None = None, reduced: float | None = None

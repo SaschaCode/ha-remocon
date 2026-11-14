@@ -43,6 +43,21 @@
       },
       "dhw_reduced_temp": {
         "name": "Warmwasser-Absenktemperatur"
+      },
+      "schedule_heating_z1": {
+        "name": "Heizkreis 1 Zeitplan"
+      },
+      "schedule_heating_z2": {
+        "name": "Heizkreis 2 Zeitplan"
+      },
+      "schedule_heating_z3": {
+        "name": "Heizkreis 3 Zeitplan"
+      },
+      "schedule_dhw": {
+        "name": "Warmwasser Zeitplan"
+      },
+      "schedule_buffer": {
+        "name": "Puffer Zeitplan"
       }
     },
     "binary_sensor": {
@@ -112,6 +127,38 @@
       "quiet_mode": {
         "name": "Leiser Betrieb"
       }
+    },
+    "time": {
+      "schedule_heating_z1_block_1_start": { "name": "Heizkreis 1 Block 1 Start" },
+      "schedule_heating_z1_block_1_end": { "name": "Heizkreis 1 Block 1 Ende" },
+      "schedule_heating_z1_block_2_start": { "name": "Heizkreis 1 Block 2 Start" },
+      "schedule_heating_z1_block_2_end": { "name": "Heizkreis 1 Block 2 Ende" },
+      "schedule_heating_z1_block_3_start": { "name": "Heizkreis 1 Block 3 Start" },
+      "schedule_heating_z1_block_3_end": { "name": "Heizkreis 1 Block 3 Ende" },
+      "schedule_heating_z2_block_1_start": { "name": "Heizkreis 2 Block 1 Start" },
+      "schedule_heating_z2_block_1_end": { "name": "Heizkreis 2 Block 1 Ende" },
+      "schedule_heating_z2_block_2_start": { "name": "Heizkreis 2 Block 2 Start" },
+      "schedule_heating_z2_block_2_end": { "name": "Heizkreis 2 Block 2 Ende" },
+      "schedule_heating_z2_block_3_start": { "name": "Heizkreis 2 Block 3 Start" },
+      "schedule_heating_z2_block_3_end": { "name": "Heizkreis 2 Block 3 Ende" },
+      "schedule_heating_z3_block_1_start": { "name": "Heizkreis 3 Block 1 Start" },
+      "schedule_heating_z3_block_1_end": { "name": "Heizkreis 3 Block 1 Ende" },
+      "schedule_heating_z3_block_2_start": { "name": "Heizkreis 3 Block 2 Start" },
+      "schedule_heating_z3_block_2_end": { "name": "Heizkreis 3 Block 2 Ende" },
+      "schedule_heating_z3_block_3_start": { "name": "Heizkreis 3 Block 3 Start" },
+      "schedule_heating_z3_block_3_end": { "name": "Heizkreis 3 Block 3 Ende" },
+      "schedule_dhw_block_1_start": { "name": "Warmwasser Block 1 Start" },
+      "schedule_dhw_block_1_end": { "name": "Warmwasser Block 1 Ende" },
+      "schedule_dhw_block_2_start": { "name": "Warmwasser Block 2 Start" },
+      "schedule_dhw_block_2_end": { "name": "Warmwasser Block 2 Ende" },
+      "schedule_dhw_block_3_start": { "name": "Warmwasser Block 3 Start" },
+      "schedule_dhw_block_3_end": { "name": "Warmwasser Block 3 Ende" },
+      "schedule_buffer_block_1_start": { "name": "Puffer Block 1 Start" },
+      "schedule_buffer_block_1_end": { "name": "Puffer Block 1 Ende" },
+      "schedule_buffer_block_2_start": { "name": "Puffer Block 2 Start" },
+      "schedule_buffer_block_2_end": { "name": "Puffer Block 2 Ende" },
+      "schedule_buffer_block_3_start": { "name": "Puffer Block 3 Start" },
+      "schedule_buffer_block_3_end": { "name": "Puffer Block 3 Ende" }
     }
   }
 }

@@ -43,6 +43,21 @@
       },
       "dhw_reduced_temp": {
         "name": "DHW Reduced Temperature"
+      },
+      "schedule_heating_z1": {
+        "name": "Heating Zone 1 Schedule"
+      },
+      "schedule_heating_z2": {
+        "name": "Heating Zone 2 Schedule"
+      },
+      "schedule_heating_z3": {
+        "name": "Heating Zone 3 Schedule"
+      },
+      "schedule_dhw": {
+        "name": "DHW Schedule"
+      },
+      "schedule_buffer": {
+        "name": "Buffer Schedule"
       }
     },
     "binary_sensor": {
@@ -112,6 +127,38 @@
       "quiet_mode": {
         "name": "Quiet Mode"
       }
+    },
+    "time": {
+      "schedule_heating_z1_block_1_start": { "name": "Heating Zone 1 Block 1 Start" },
+      "schedule_heating_z1_block_1_end": { "name": "Heating Zone 1 Block 1 End" },
+      "schedule_heating_z1_block_2_start": { "name": "Heating Zone 1 Block 2 Start" },
+      "schedule_heating_z1_block_2_end": { "name": "Heating Zone 1 Block 2 End" },
+      "schedule_heating_z1_block_3_start": { "name": "Heating Zone 1 Block 3 Start" },
+      "schedule_heating_z1_block_3_end": { "name": "Heating Zone 1 Block 3 End" },
+      "schedule_heating_z2_block_1_start": { "name": "Heating Zone 2 Block 1 Start" },
+      "schedule_heating_z2_block_1_end": { "name": "Heating Zone 2 Block 1 End" },
+      "schedule_heating_z2_block_2_start": { "name": "Heating Zone 2 Block 2 Start" },
+      "schedule_heating_z2_block_2_end": { "name": "Heating Zone 2 Block 2 End" },
+      "schedule_heating_z2_block_3_start": { "name": "Heating Zone 2 Block 3 Start" },
+      "schedule_heating_z2_block_3_end": { "name": "Heating Zone 2 Block 3 End" },
+      "schedule_heating_z3_block_1_start": { "name": "Heating Zone 3 Block 1 Start" },
+      "schedule_heating_z3_block_1_end": { "name": "Heating Zone 3 Block 1 End" },
+      "schedule_heating_z3_block_2_start": { "name": "Heating Zone 3 Block 2 Start" },
+      "schedule_heating_z3_block_2_end": { "name": "Heating Zone 3 Block 2 End" },
+      "schedule_heating_z3_block_3_start": { "name": "Heating Zone 3 Block 3 Start" },
+      "schedule_heating_z3_block_3_end": { "name": "Heating Zone 3 Block 3 End" },
+      "schedule_dhw_block_1_start": { "name": "DHW Block 1 Start" },
+      "schedule_dhw_block_1_end": { "name": "DHW Block 1 End" },
+      "schedule_dhw_block_2_start": { "name": "DHW Block 2 Start" },
+      "schedule_dhw_block_2_end": { "name": "DHW Block 2 End" },
+      "schedule_dhw_block_3_start": { "name": "DHW Block 3 Start" },
+      "schedule_dhw_block_3_end": { "name": "DHW Block 3 End" },
+      "schedule_buffer_block_1_start": { "name": "Buffer Block 1 Start" },
+      "schedule_buffer_block_1_end": { "name": "Buffer Block 1 End" },
+      "schedule_buffer_block_2_start": { "name": "Buffer Block 2 Start" },
+      "schedule_buffer_block_2_end": { "name": "Buffer Block 2 End" },
+      "schedule_buffer_block_3_start": { "name": "Buffer Block 3 Start" },
+      "schedule_buffer_block_3_end": { "name": "Buffer Block 3 End" }
     }
   }
 }

@@ -66,6 +66,7 @@ const.Platform = types.SimpleNamespace(
     SELECT="select",
     WATER_HEATER="water_heater",
     SWITCH="switch",
+    TIME="time",
 )
 
 core = _module("homeassistant.core")

@@ -20,6 +20,10 @@ _LOGGER = logging.getLogger(__name__)
 class ElcoRemoconCoordinator(DataUpdateCoordinator[RemoconData]):
     """Coordinator to poll Elco Remocon-Net data."""
 
+    # Weekly time programs change rarely; poll them on a slow cadence and
+    # carry the last good read over between polls.
+    SCHEDULE_POLL_EVERY = 5
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -39,11 +43,21 @@ class ElcoRemoconCoordinator(DataUpdateCoordinator[RemoconData]):
             gateway_id=config_entry.data[CONF_GATEWAY_ID],
             zone=config_entry.data.get(CONF_ZONE, "1"),
         )
+        self._poll_count = 0
 
     async def _async_update_data(self) -> RemoconData:
         """Fetch data from the Remocon-Net cloud API."""
         try:
-            return await self.hass.async_add_executor_job(self.client.get_data)
+            data = await self.hass.async_add_executor_job(self.client.get_data)
+            if self.client.is_flat_api:
+                self._poll_count += 1
+                if self._poll_count % self.SCHEDULE_POLL_EVERY == 1:
+                    data.time_progs = await self.hass.async_add_executor_job(
+                        self.client.get_time_progs
+                    )
+                else:
+                    data.time_progs = dict(self.client._last_time_progs)
+            return data
         except RemoconAuthError as err:
             raise ConfigEntryAuthFailed("Authentication failed") from err
         except RemoconConnectionError as err:

@@ -113,6 +113,10 @@ def platforms():
             WaterHeaterEntity=type("WaterHeaterEntity", (Entity,), {}),
             WaterHeaterEntityFeature=WaterHeaterEntityFeature,
         )
+        module(
+            "homeassistant.components.time",
+            TimeEntity=type("TimeEntity", (Entity,), {}),
+        )
         module("homeassistant.helpers.entity_platform", AddConfigEntryEntitiesCallback=object)
         module("homeassistant.helpers.typing", StateType=object)
         const = sys.modules["homeassistant.const"]
@@ -124,7 +128,7 @@ def platforms():
             sys.modules["homeassistant.helpers.update_coordinator"],
             "CoordinatorEntity", CoordinatorEntity, raising=False,
         )
-        names = ("sensor", "binary_sensor", "climate", "select", "number", "switch", "water_heater")
+        names = ("sensor", "binary_sensor", "climate", "select", "number", "switch", "water_heater", "time")
         module_names = [f"custom_components.elco_remocon.{name}" for name in names]
         for name in module_names:
             monkeypatch.delitem(sys.modules, name, raising=False)
@@ -154,20 +158,24 @@ def setup_entities(platforms, data, zone="1", flat_api=False):
     numbers = []
     switches = []
     water_heaters = []
+    times = []
     asyncio.run(platforms.sensor.async_setup_entry(hass, entry, sensors.extend))
     asyncio.run(platforms.binary_sensor.async_setup_entry(hass, entry, binaries.extend))
     asyncio.run(platforms.select.async_setup_entry(hass, entry, selects.extend))
     asyncio.run(platforms.number.async_setup_entry(hass, entry, numbers.extend))
     asyncio.run(platforms.switch.async_setup_entry(hass, entry, switches.extend))
     asyncio.run(platforms.water_heater.async_setup_entry(hass, entry, water_heaters.extend))
+    asyncio.run(platforms.time.async_setup_entry(hass, entry, times.extend))
     return types.SimpleNamespace(
         coordinator=coordinator, entry=entry, hass=hass,
-        sensors={entity.entity_description.key: entity for entity in sensors},
+        sensors={e.entity_description.key: e for e in sensors if hasattr(e, "entity_description")},
+        schedule_sensors=[e for e in sensors if not hasattr(e, "entity_description")],
         binaries={entity.entity_description.key: entity for entity in binaries},
         selects={entity.entity_description.key: entity for entity in selects},
         numbers={entity.entity_description.key: entity for entity in numbers},
         switches={entity.entity_description.key: entity for entity in switches},
         water_heaters=water_heaters,
+        times=times,
     )
 
 
@@ -424,3 +432,100 @@ def test_dhw_mode_select_switches_from_off_to_timed_after_reload(platforms):
     asyncio.run(select.async_select_option("timed"))
 
     assert written_modes == [1]
+
+
+# ----------------------------------------------------------------------
+# Schedule read-back sensors and writable time entities
+# ----------------------------------------------------------------------
+
+SCHEDULE_PROG = {
+    "timeProg": {
+        "progId": 7,
+        "weeklyPlan": {
+            "allowedTemp": [0, 1],
+            "maxSwitches": 6,
+            "plans": [
+                {"days": [
+                    {"day": d, "slices": [
+                        {"from": 0, "temp": 0},
+                        {"from": 360, "temp": 1},
+                        {"from": 1020, "temp": 0},
+                    ]}
+                    for d in range(7)
+                ]},
+            ],
+        },
+    }
+}
+
+
+def _schedule_data(**kwargs):
+    return RemoconData(time_progs={7: SCHEDULE_PROG, 1: SCHEDULE_PROG}, **kwargs)
+
+
+def test_schedule_sensors_created_only_with_programs(platforms):
+    state = setup_entities(platforms, _schedule_data(), flat_api=True)
+    keys = {e._attr_unique_id.rsplit("_", 1)[-1] for e in state.schedule_sensors}
+    assert any("schedule_dhw" in e._attr_unique_id for e in state.schedule_sensors)
+    assert any("schedule_heating_z1" in e._attr_unique_id for e in state.schedule_sensors)
+    # buffer progIds 4-6 are absent -> no buffer sensor
+    assert not any("schedule_buffer" in e._attr_unique_id for e in state.schedule_sensors)
+    # non-flat gateway -> no schedule sensors at all
+    state2 = setup_entities(platforms, _schedule_data(), flat_api=False)
+    assert state2.schedule_sensors == []
+
+
+def test_schedule_sensor_state_and_attributes(platforms):
+    state = setup_entities(platforms, _schedule_data(), flat_api=True)
+    sensor = next(e for e in state.schedule_sensors if "schedule_dhw" in e._attr_unique_id)
+    # every day has the 06:00-17:00 comfort block
+    assert sensor.native_value == "06:00-17:00"
+    attrs = sensor.extra_state_attributes
+    assert set(attrs["weekly"].keys()) == {"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
+    assert attrs["weekly"]["mon"][1] == {"from": "06:00", "temp": 1}
+    assert len(attrs["timeline"]) == 96
+    assert attrs["timeline"][24] == "comfort"   # 06:00
+    assert attrs["timeline"][23] == "reduced"   # 05:45
+    assert attrs["timeline"][68] == "reduced"   # 17:00
+
+
+def test_time_entities_created_per_program_and_block(platforms):
+    state = setup_entities(platforms, _schedule_data(), flat_api=True)
+    # 2 programs (z1 + dhw) x 3 blocks x (start,end); buffer progIds 4-6 are
+    # read-only (SetTimeProg rejects them) -> no buffer time entities.
+    assert len(state.times) == 2 * 3 * 2
+    assert not any("buffer" in t._attr_unique_id for t in state.times)
+    starts = [t for t in state.times if t._part == "start" and "dhw" in t._attr_unique_id]
+    assert len(starts) == 3
+    assert starts[0].native_value.hour == 6 and starts[0].native_value.minute == 0
+    ends = [t for t in state.times if t._part == "end" and "dhw" in t._attr_unique_id]
+    assert ends[0].native_value.hour == 17
+
+
+def test_time_entities_absent_without_flat_api(platforms):
+    state = setup_entities(platforms, _schedule_data(), flat_api=False)
+    assert state.times == []
+
+
+def test_time_entity_write_calls_set_time_prog_week(platforms):
+    from datetime import time as dt_time
+    state = setup_entities(platforms, _schedule_data(), flat_api=True)
+    written = []
+    state.coordinator.client = types.SimpleNamespace(
+        is_flat_api=True,
+        set_time_prog_week=lambda prog, blocks: written.append((prog, blocks)),
+    )
+
+    async def add_executor_job(fn, *args):
+        return fn(*args)
+
+    state.hass.async_add_executor_job = add_executor_job
+    state.coordinator.async_request_refresh = lambda: asyncio.sleep(0)
+
+    end_entity = next(
+        t for t in state.times
+        if "schedule_dhw_block_1_end" in t._attr_unique_id
+    )
+    end_entity.hass = state.hass
+    asyncio.run(end_entity.async_set_value(dt_time(18, 30)))
+    assert written == [(7, [("06:00", "18:30")])]

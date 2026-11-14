@@ -1693,3 +1693,272 @@ def test_dhw_unavailable_when_mode_item_is_missing(flat_api):
 
     assert data.dhw_available is False
     assert data.dhw_enabled is False
+
+
+# ----------------------------------------------------------------------
+# Weekly time programs (R2 PlantTimeProg) — read + write + validation
+# ----------------------------------------------------------------------
+
+DHW_PROG_DATA = {
+    "timeProg": {
+        "progId": 7,
+        "weeklyPlan": {
+            "allowedTemp": [0, 1],
+            "maxSwitches": 6,
+            "plans": [
+                {"days": [
+                    {"day": d, "slices": [
+                        {"from": 0, "temp": 0},
+                        {"from": 0, "temp": 1},
+                        {"from": 390, "temp": 0},
+                    ]}
+                    for d in range(7)
+                ]},
+            ],
+        },
+    }
+}
+
+
+def _timeprog_response(data=None):
+    return {"ok": True, "data": data if data is not None else DHW_PROG_DATA}
+
+
+def _flat_client():
+    client = make_client()
+    client._flat_api = True
+    return client
+
+
+def test_get_time_prog_posts_to_planttimeprog_getdata():
+    client = _flat_client()
+    with patch.object(client, "_request", return_value=_timeprog_response()) as mock_request:
+        data = client.get_time_prog(7)
+    assert data == DHW_PROG_DATA
+    path = mock_request.call_args[0][1]
+    assert path == "/R2/PlantTimeProg/GetData/GW123?umsys=si"
+    payload = mock_request.call_args[1]["json"]
+    assert payload["progId"] == 7
+    assert payload["filters"]["timeProg"] is True
+
+
+def test_get_time_prog_requires_flat_api():
+    client = make_client()
+    with pytest.raises(RemoconDataError):
+        client.get_time_prog(7)
+
+
+def test_get_time_prog_returns_none_without_real_plan():
+    client = _flat_client()
+    empty = {"ok": True, "data": {"timeProg": {"weeklyPlan": {"plans": []}}}}
+    with patch.object(client, "_request", return_value=empty):
+        assert client.get_time_prog(0) is None
+    with patch.object(client, "_request", return_value={"ok": False}):
+        assert client.get_time_prog(7) is None
+
+
+def test_get_time_progs_rejects_placeholder_buffer_plans():
+    client = _flat_client()
+    placeholder = {"ok": True, "data": {"timeProg": {"weeklyPlan": {
+        "allowedTemp": [0, 1], "maxSwitches": 6,
+        "plans": [{"days": [{"day": d, "slices": [{"from": 0, "temp": 0}]}
+                             for d in range(7)]}],
+    }}}}
+    real = _timeprog_response()
+
+    def fake_request(method, path, **kwargs):
+        prog_id = kwargs["json"]["progId"]
+        if prog_id in (4, 5, 6):
+            return placeholder
+        return real
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        progs = client.get_time_progs()
+    assert 7 in progs and 1 in progs
+    assert 4 not in progs and 5 not in progs and 6 not in progs
+
+
+def test_get_time_progs_carries_over_last_good_read():
+    client = _flat_client()
+    with patch.object(client, "_request", return_value=_timeprog_response()):
+        client.get_time_progs()
+    assert 7 in client._last_time_progs
+
+    def failing(method, path, **kwargs):
+        if "PlantTimeProg" in path:
+            raise RemoconConnectionError("boom")
+        return GOOD_RESPONSE
+
+    with patch.object(client, "_request", side_effect=failing):
+        progs = client.get_time_progs()
+    assert 7 in progs  # carried over
+
+
+def test_set_time_prog_week_posts_full_weekly_plan_and_verifies():
+    client = _flat_client()
+    calls = []
+    new_plan = {
+        "timeProg": {"progId": 7, "weeklyPlan": {
+            "allowedTemp": [0, 1], "maxSwitches": 6,
+            "plans": [{"days": [{"day": d, "slices": [
+                {"from": 0, "temp": 0},
+                {"from": 360, "temp": 1},
+                {"from": 1020, "temp": 0},
+            ]} for d in range(7)]}],
+        }},
+    }
+    state = {"written": False}
+
+    def fake_request(method, path, **kwargs):
+        calls.append((path, kwargs.get("json")))
+        if "SetTimeProg" in path:
+            state["written"] = True
+            return {"ok": True}
+        if "GetData" in path:
+            return _timeprog_response() if not state["written"] else {"ok": True, "data": new_plan}
+        return GOOD_RESPONSE
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        client.set_time_prog_week(7, [("06:00", "17:00")])
+
+    set_calls = [c for c in calls if "SetTimeProg" in c[0]]
+    assert len(set_calls) == 1
+    payload = set_calls[0][1]
+    assert payload["timeProg"]["progId"] == 7
+    plans = payload["timeProg"]["weeklyPlan"]["plans"]
+    days = plans[0]["days"]
+    assert len(days) == 7
+    slices = days[0]["slices"]
+    assert slices == [
+        {"from": 0, "temp": 0},
+        {"from": 360, "temp": 1},
+        {"from": 1020, "temp": 0},
+    ]
+
+
+def test_set_time_prog_week_rejects_non_writable_prog():
+    client = _flat_client()
+    with patch.object(client, "_request", side_effect=AssertionError("no HTTP expected")):
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_week(4, [("06:00", "08:00")])
+
+
+def test_set_time_prog_week_rejects_invalid_blocks_without_posting():
+    client = _flat_client()
+    with patch.object(client, "_request", side_effect=AssertionError("no HTTP expected")):
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_week(7, [])  # empty
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_week(7, [("08:00", "06:00")])  # start >= end
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_week(7, [("06:00", "08:00"), ("07:00", "09:00")])  # overlap
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_week(7, [("01:00", "02:00")] * 4)  # too many blocks
+        with pytest.raises(ValueError):
+            client.set_time_prog_week(7, [("25:00", "26:00")])  # bad HH:MM
+
+
+def test_set_time_prog_week_raises_when_readback_not_confirmed():
+    client = _flat_client()
+
+    def fake_request(method, path, **kwargs):
+        if "SetTimeProg" in path:
+            return {"ok": True}
+        if "GetData" in path:
+            return _timeprog_response()  # unchanged plan -> never confirms
+        return GOOD_RESPONSE
+
+    with patch.object(client, "_request", side_effect=fake_request), patch(
+        "custom_components.elco_remocon.api.time.sleep"
+    ):
+        with pytest.raises(RemoconDataError, match="could not be confirmed"):
+            client.set_time_prog_week(7, [("06:00", "17:00")])
+
+
+def test_set_time_prog_slice_regroups_days_by_identical_slices():
+    client = _flat_client()
+    calls = []
+
+    def fake_request(method, path, **kwargs):
+        calls.append((path, kwargs.get("json")))
+        if "SetTimeProg" in path:
+            return {"ok": True}
+        if "GetData" in path:
+            return _timeprog_response()
+        return GOOD_RESPONSE
+
+    with patch.object(client, "_request", side_effect=fake_request), patch(
+        "custom_components.elco_remocon.api.time.sleep"
+    ):
+        try:
+            client.set_time_prog_slice(7, 2, "06:00", "08:00")
+        except RemoconDataError:
+            pass  # read-back returns the old plan; payload shape is what we assert
+
+    set_calls = [c for c in calls if "SetTimeProg" in c[0]]
+    assert len(set_calls) == 1
+    plans = set_calls[0][1]["timeProg"]["weeklyPlan"]["plans"]
+    all_days = [d for p in plans for d in p["days"]]
+    assert len(all_days) == 7
+    day2 = next(d for d in all_days if d["day"] == 2)
+    assert day2["slices"] == [
+        {"from": 0, "temp": 0},
+        {"from": 360, "temp": 1},
+        {"from": 480, "temp": 0},
+    ]
+
+
+def test_set_time_prog_slice_rejects_bad_day_and_times():
+    client = _flat_client()
+    with patch.object(client, "_request", side_effect=AssertionError("no HTTP expected")):
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_slice(7, 7, "06:00", "08:00")
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_slice(7, 1, "08:00", "06:00")
+        with pytest.raises(RemoconDataError):
+            client.set_time_prog_slice(9, 1, "06:00", "08:00")  # not writable
+
+
+def test_get_data_does_not_fetch_time_progs_main_poll_stays_cheap():
+    """Schedules are polled by the coordinator on a slow cadence, not in get_data."""
+    client = _flat_client()
+    flat_response = {"ok": True, "data": {"items": [
+        {"id": "ZoneComfortTemp", "value": 21},
+        {"id": "DhwMode", "value": 1},
+    ]}}
+
+    def fake_request(method, path, **kwargs):
+        assert "PlantTimeProg" not in path, "get_data must not fetch schedules"
+        return flat_response
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        data = client.get_data()
+    assert data.time_progs == {}
+
+
+def test_set_time_prog_week_rejects_incomplete_readback():
+    """A read-back missing some of the 7 days must not count as confirmed."""
+    client = _flat_client()
+    partial_plan = {
+        "timeProg": {"progId": 7, "weeklyPlan": {
+            "allowedTemp": [0, 1], "maxSwitches": 6,
+            "plans": [{"days": [{"day": d, "slices": [
+                {"from": 0, "temp": 0},
+                {"from": 360, "temp": 1},
+                {"from": 1020, "temp": 0},
+            ]} for d in range(5)]}],  # only 5 of 7 days
+        }},
+    }
+
+    def fake_request(method, path, **kwargs):
+        if "SetTimeProg" in path:
+            return {"ok": True}
+        if "GetData" in path:
+            return {"ok": True, "data": partial_plan}
+        return GOOD_RESPONSE
+
+    with patch.object(client, "_request", side_effect=fake_request), patch(
+        "custom_components.elco_remocon.api.time.sleep"
+    ):
+        with pytest.raises(RemoconDataError, match="could not be confirmed"):
+            client.set_time_prog_week(7, [("06:00", "17:00")])
