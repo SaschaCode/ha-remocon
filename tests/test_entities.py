@@ -489,14 +489,15 @@ def test_schedule_sensor_state_and_attributes(platforms):
     assert attrs["timeline"][68] == "reduced"   # 17:00
 
 
-def test_time_entities_created_per_program_and_block(platforms):
+def test_time_entities_created_per_program(platforms):
     state = setup_entities(platforms, _schedule_data(), flat_api=True)
-    # 2 programs (z1 + dhw) x 3 blocks x (start,end); buffer progIds 4-6 are
-    # read-only (SetTimeProg rejects them) -> no buffer time entities.
-    assert len(state.times) == 2 * 3 * 2
+    # one start/end pair per writable program (z1 + dhw); buffer progIds 4-6
+    # are read-only (SetTimeProg rejects them) -> no buffer time entities.
+    # Per-day/multi-block schedules go through the set_time_program service.
+    assert len(state.times) == 2 * 2
     assert not any("buffer" in t._attr_unique_id for t in state.times)
     starts = [t for t in state.times if t._part == "start" and "dhw" in t._attr_unique_id]
-    assert len(starts) == 3
+    assert len(starts) == 1
     assert starts[0].native_value.hour == 6 and starts[0].native_value.minute == 0
     ends = [t for t in state.times if t._part == "end" and "dhw" in t._attr_unique_id]
     assert ends[0].native_value.hour == 17
@@ -524,8 +525,104 @@ def test_time_entity_write_calls_set_time_prog_week(platforms):
 
     end_entity = next(
         t for t in state.times
-        if "schedule_dhw_block_1_end" in t._attr_unique_id
+        if "schedule_dhw_end" in t._attr_unique_id
     )
     end_entity.hass = state.hass
     asyncio.run(end_entity.async_set_value(dt_time(18, 30)))
     assert written == [(7, [("06:00", "18:30")])]
+
+
+# ----------------------------------------------------------------------
+# set_time_program service (per-day / multi-block schedule writes)
+# ----------------------------------------------------------------------
+
+def _service_hass():
+    """Minimal hass stub capturing service registrations."""
+    services = {}
+
+    class _Services:
+        def async_register(self, domain, service, handler, schema=None):
+            services[(domain, service)] = (handler, schema)
+
+        def async_remove(self, domain, service):
+            services.pop((domain, service), None)
+
+    async def add_executor_job(fn, *args):
+        return fn(*args)
+
+    return types.SimpleNamespace(
+        services=_Services(), async_add_executor_job=add_executor_job,
+        _registered=services,
+    ), services
+
+
+def _run_service(platforms, handler_data, prog=7):
+    """Invoke the registered set_time_program handler with a fake call."""
+    import custom_components.elco_remocon as init_mod
+    hass, services = _service_hass()
+    calls = []
+    coordinator = types.SimpleNamespace(
+        client=types.SimpleNamespace(
+            set_time_prog_week=lambda p, b: calls.append(("week", p, b)),
+            set_time_prog_slice=lambda p, d, s, e: calls.append(("day", p, d, s, e)),
+        ),
+        async_request_refresh=lambda: asyncio.sleep(0),
+        async_config_entry_first_refresh=lambda: asyncio.sleep(0),
+    )
+    entry = types.SimpleNamespace(
+        entry_id="e1",
+        data={"email": "e", "password": "p", "gateway_id": "GW123", "zone": "1"},
+    )
+    hass.data = {init_mod.DOMAIN: {}}
+    hass.config_entries = types.SimpleNamespace(
+        async_forward_entry_setups=lambda *a, **k: asyncio.sleep(0)
+    )
+    # coordinator ctor needs hass only for super(); bypass by calling the
+    # handler registration directly through async_setup_entry is complex, so
+    # call the module-level registration path with a patched coordinator.
+    with patch.object(init_mod, "ElcoRemoconCoordinator", lambda hass, entry: coordinator):
+        asyncio.run(init_mod.async_setup_entry(hass, entry))
+    handler, _ = services[(init_mod.DOMAIN, "set_time_program")]
+    call = types.SimpleNamespace(data=handler_data)
+    asyncio.run(handler(call))
+    return calls
+
+
+def test_service_single_block_whole_week(platforms):
+    from datetime import time as dt_time
+    calls = _run_service(platforms, {
+        "program": "dhw", "comfort_start": dt_time(6, 45), "comfort_end": dt_time(22, 0),
+    })
+    assert calls == [("week", 7, [("06:45", "22:00")])]
+
+
+def test_service_single_day_uses_slice_write(platforms):
+    from datetime import time as dt_time
+    calls = _run_service(platforms, {
+        "program": "heating_z1", "day": "wednesday",
+        "comfort_start": dt_time(6, 0), "comfort_end": dt_time(8, 0),
+    })
+    assert calls == [("day", 1, 3, "06:00", "08:00")]  # wednesday = JS day 3
+
+
+def test_service_multiple_blocks_week(platforms):
+    from datetime import time as dt_time
+    calls = _run_service(platforms, {
+        "program": "dhw",
+        "blocks": [[dt_time(6, 0), dt_time(8, 0)], [dt_time(17, 0), dt_time(22, 0)]],
+    })
+    assert calls == [("week", 7, [("06:00", "08:00"), ("17:00", "22:00")])]
+
+
+def test_service_rejects_day_with_blocks(platforms):
+    from datetime import time as dt_time
+    with pytest.raises(ValueError):
+        _run_service(platforms, {
+            "program": "dhw", "day": "monday",
+            "blocks": [[dt_time(6, 0), dt_time(8, 0)]],
+        })
+
+
+def test_service_rejects_missing_times(platforms):
+    with pytest.raises(ValueError):
+        _run_service(platforms, {"program": "dhw"})

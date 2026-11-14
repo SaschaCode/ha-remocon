@@ -71,6 +71,7 @@ const.Platform = types.SimpleNamespace(
 
 core = _module("homeassistant.core")
 core.HomeAssistant = type("HomeAssistant", (), {})
+core.ServiceCall = type("ServiceCall", (), {})
 
 data_entry_flow = _module("homeassistant.data_entry_flow")
 data_entry_flow.FlowResult = dict
@@ -79,6 +80,13 @@ vol = _module("voluptuous")
 vol.Schema = lambda schema: schema
 vol.Required = lambda key, **kwargs: key
 vol.Optional = lambda key, **kwargs: key
+vol.In = lambda container: container
+vol.All = lambda *validators: validators[-1] if validators else None
+vol.Length = lambda **kwargs: None
+
+helpers_config_validation = _module("homeassistant.helpers.config_validation")
+helpers_config_validation.time = lambda v: v
+helpers_config_validation.ensure_list = lambda v: v if isinstance(v, list) else [v]
 
 helpers = _module("homeassistant.helpers")
 helpers.__path__ = []

@@ -129,36 +129,58 @@
       }
     },
     "time": {
-      "schedule_heating_z1_block_1_start": { "name": "Heizkreis 1 Block 1 Start" },
-      "schedule_heating_z1_block_1_end": { "name": "Heizkreis 1 Block 1 Ende" },
-      "schedule_heating_z1_block_2_start": { "name": "Heizkreis 1 Block 2 Start" },
-      "schedule_heating_z1_block_2_end": { "name": "Heizkreis 1 Block 2 Ende" },
-      "schedule_heating_z1_block_3_start": { "name": "Heizkreis 1 Block 3 Start" },
-      "schedule_heating_z1_block_3_end": { "name": "Heizkreis 1 Block 3 Ende" },
-      "schedule_heating_z2_block_1_start": { "name": "Heizkreis 2 Block 1 Start" },
-      "schedule_heating_z2_block_1_end": { "name": "Heizkreis 2 Block 1 Ende" },
-      "schedule_heating_z2_block_2_start": { "name": "Heizkreis 2 Block 2 Start" },
-      "schedule_heating_z2_block_2_end": { "name": "Heizkreis 2 Block 2 Ende" },
-      "schedule_heating_z2_block_3_start": { "name": "Heizkreis 2 Block 3 Start" },
-      "schedule_heating_z2_block_3_end": { "name": "Heizkreis 2 Block 3 Ende" },
-      "schedule_heating_z3_block_1_start": { "name": "Heizkreis 3 Block 1 Start" },
-      "schedule_heating_z3_block_1_end": { "name": "Heizkreis 3 Block 1 Ende" },
-      "schedule_heating_z3_block_2_start": { "name": "Heizkreis 3 Block 2 Start" },
-      "schedule_heating_z3_block_2_end": { "name": "Heizkreis 3 Block 2 Ende" },
-      "schedule_heating_z3_block_3_start": { "name": "Heizkreis 3 Block 3 Start" },
-      "schedule_heating_z3_block_3_end": { "name": "Heizkreis 3 Block 3 Ende" },
-      "schedule_dhw_block_1_start": { "name": "Warmwasser Block 1 Start" },
-      "schedule_dhw_block_1_end": { "name": "Warmwasser Block 1 Ende" },
-      "schedule_dhw_block_2_start": { "name": "Warmwasser Block 2 Start" },
-      "schedule_dhw_block_2_end": { "name": "Warmwasser Block 2 Ende" },
-      "schedule_dhw_block_3_start": { "name": "Warmwasser Block 3 Start" },
-      "schedule_dhw_block_3_end": { "name": "Warmwasser Block 3 Ende" },
-      "schedule_buffer_block_1_start": { "name": "Puffer Block 1 Start" },
-      "schedule_buffer_block_1_end": { "name": "Puffer Block 1 Ende" },
-      "schedule_buffer_block_2_start": { "name": "Puffer Block 2 Start" },
-      "schedule_buffer_block_2_end": { "name": "Puffer Block 2 Ende" },
-      "schedule_buffer_block_3_start": { "name": "Puffer Block 3 Start" },
-      "schedule_buffer_block_3_end": { "name": "Puffer Block 3 Ende" }
+      "schedule_heating_z1_start": {
+        "name": "Heizkreis 1 Start"
+      },
+      "schedule_heating_z1_end": {
+        "name": "Heizkreis 1 Ende"
+      },
+      "schedule_heating_z2_start": {
+        "name": "Heizkreis 2 Start"
+      },
+      "schedule_heating_z2_end": {
+        "name": "Heizkreis 2 Ende"
+      },
+      "schedule_heating_z3_start": {
+        "name": "Heizkreis 3 Start"
+      },
+      "schedule_heating_z3_end": {
+        "name": "Heizkreis 3 Ende"
+      },
+      "schedule_dhw_start": {
+        "name": "Warmwasser Start"
+      },
+      "schedule_dhw_end": {
+        "name": "Warmwasser Ende"
+      }
+    }
+  },
+  "services": {
+    "set_time_program": {
+      "name": "Zeitprogramm setzen",
+      "description": "Setzt ein Zeitprogramm (Warmwasser oder Heizkreis): ein Block (comfort_start/comfort_end), optional nur fuer einen Tag (day), oder mehrere Bloecke (blocks) fuer die ganze Woche.",
+      "fields": {
+        "program": {
+          "name": "Programm",
+          "description": "heating_z1..3 oder dhw"
+        },
+        "day": {
+          "name": "Tag",
+          "description": "Optionaler einzelner Wochentag (sunday..saturday)"
+        },
+        "comfort_start": {
+          "name": "Komfort-Start",
+          "description": "Start des Komfort-Blocks (HH:MM)"
+        },
+        "comfort_end": {
+          "name": "Komfort-Ende",
+          "description": "Ende des Komfort-Blocks (HH:MM)"
+        },
+        "blocks": {
+          "name": "Bloecke",
+          "description": "Liste von [start, ende] Paaren (max. 3), gilt fuer die ganze Woche"
+        }
+      }
     }
   }
 }

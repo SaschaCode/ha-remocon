@@ -129,36 +129,58 @@
       }
     },
     "time": {
-      "schedule_heating_z1_block_1_start": { "name": "Heating Zone 1 Block 1 Start" },
-      "schedule_heating_z1_block_1_end": { "name": "Heating Zone 1 Block 1 End" },
-      "schedule_heating_z1_block_2_start": { "name": "Heating Zone 1 Block 2 Start" },
-      "schedule_heating_z1_block_2_end": { "name": "Heating Zone 1 Block 2 End" },
-      "schedule_heating_z1_block_3_start": { "name": "Heating Zone 1 Block 3 Start" },
-      "schedule_heating_z1_block_3_end": { "name": "Heating Zone 1 Block 3 End" },
-      "schedule_heating_z2_block_1_start": { "name": "Heating Zone 2 Block 1 Start" },
-      "schedule_heating_z2_block_1_end": { "name": "Heating Zone 2 Block 1 End" },
-      "schedule_heating_z2_block_2_start": { "name": "Heating Zone 2 Block 2 Start" },
-      "schedule_heating_z2_block_2_end": { "name": "Heating Zone 2 Block 2 End" },
-      "schedule_heating_z2_block_3_start": { "name": "Heating Zone 2 Block 3 Start" },
-      "schedule_heating_z2_block_3_end": { "name": "Heating Zone 2 Block 3 End" },
-      "schedule_heating_z3_block_1_start": { "name": "Heating Zone 3 Block 1 Start" },
-      "schedule_heating_z3_block_1_end": { "name": "Heating Zone 3 Block 1 End" },
-      "schedule_heating_z3_block_2_start": { "name": "Heating Zone 3 Block 2 Start" },
-      "schedule_heating_z3_block_2_end": { "name": "Heating Zone 3 Block 2 End" },
-      "schedule_heating_z3_block_3_start": { "name": "Heating Zone 3 Block 3 Start" },
-      "schedule_heating_z3_block_3_end": { "name": "Heating Zone 3 Block 3 End" },
-      "schedule_dhw_block_1_start": { "name": "DHW Block 1 Start" },
-      "schedule_dhw_block_1_end": { "name": "DHW Block 1 End" },
-      "schedule_dhw_block_2_start": { "name": "DHW Block 2 Start" },
-      "schedule_dhw_block_2_end": { "name": "DHW Block 2 End" },
-      "schedule_dhw_block_3_start": { "name": "DHW Block 3 Start" },
-      "schedule_dhw_block_3_end": { "name": "DHW Block 3 End" },
-      "schedule_buffer_block_1_start": { "name": "Buffer Block 1 Start" },
-      "schedule_buffer_block_1_end": { "name": "Buffer Block 1 End" },
-      "schedule_buffer_block_2_start": { "name": "Buffer Block 2 Start" },
-      "schedule_buffer_block_2_end": { "name": "Buffer Block 2 End" },
-      "schedule_buffer_block_3_start": { "name": "Buffer Block 3 Start" },
-      "schedule_buffer_block_3_end": { "name": "Buffer Block 3 End" }
+      "schedule_heating_z1_start": {
+        "name": "Heating Zone 1 Start"
+      },
+      "schedule_heating_z1_end": {
+        "name": "Heating Zone 1 End"
+      },
+      "schedule_heating_z2_start": {
+        "name": "Heating Zone 2 Start"
+      },
+      "schedule_heating_z2_end": {
+        "name": "Heating Zone 2 End"
+      },
+      "schedule_heating_z3_start": {
+        "name": "Heating Zone 3 Start"
+      },
+      "schedule_heating_z3_end": {
+        "name": "Heating Zone 3 End"
+      },
+      "schedule_dhw_start": {
+        "name": "DHW Start"
+      },
+      "schedule_dhw_end": {
+        "name": "DHW End"
+      }
+    }
+  },
+  "services": {
+    "set_time_program": {
+      "name": "Set time program",
+      "description": "Set a time program (DHW or heating zone): a single block (comfort_start/comfort_end), optionally for one day only, or multiple blocks for the whole week.",
+      "fields": {
+        "program": {
+          "name": "Program",
+          "description": "heating_z1..3 or dhw"
+        },
+        "day": {
+          "name": "Day",
+          "description": "Optional single weekday (sunday..saturday)"
+        },
+        "comfort_start": {
+          "name": "Comfort start",
+          "description": "Start of the comfort block (HH:MM)"
+        },
+        "comfort_end": {
+          "name": "Comfort end",
+          "description": "End of the comfort block (HH:MM)"
+        },
+        "blocks": {
+          "name": "Blocks",
+          "description": "List of [start, end] pairs (max 3), applied to the whole week"
+        }
+      }
     }
   }
 }
