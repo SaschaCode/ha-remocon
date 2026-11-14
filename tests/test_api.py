@@ -1962,3 +1962,32 @@ def test_set_time_prog_week_rejects_incomplete_readback():
     ):
         with pytest.raises(RemoconDataError, match="could not be confirmed"):
             client.set_time_prog_week(7, [("06:00", "17:00")])
+
+
+def test_get_time_progs_tolerates_non_dict_plan_entries():
+    """Live gateway quirk: plans/days/slices entries can be plain ints."""
+    client = _flat_client()
+    day_slices = [0, {"from": 0, "temp": 0}, {"from": 360, "temp": 1}, {"from": 1020, "temp": 0}]
+    mixed = {"ok": True, "data": {"timeProg": {"weeklyPlan": {
+        "allowedTemp": [0, 1], "maxSwitches": 6,
+        "plans": [
+            42,  # non-dict plan entry
+            {"days": [7] + [{"day": d, "slices": day_slices} for d in range(7)]},
+        ],
+    }}}}
+    placeholder = {"ok": True, "data": {"timeProg": {"weeklyPlan": {
+        "allowedTemp": [0, 1], "maxSwitches": 6,
+        "plans": [{"days": [{"day": d, "slices": [{"from": 0, "temp": 0}]}
+                             for d in range(7)]}],
+    }}}}
+
+    def fake_request(method, path, **kwargs):
+        prog_id = kwargs["json"]["progId"]
+        if prog_id in (4, 5, 6):
+            return placeholder
+        return mixed
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        progs = client.get_time_progs()
+    assert 7 in progs
+    assert 4 not in progs and 5 not in progs and 6 not in progs

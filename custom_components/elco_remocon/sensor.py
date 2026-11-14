@@ -25,6 +25,7 @@ from .api import (
     TIME_PROG_DHW_ID,
     TIME_PROG_HEATING_IDS,
     RemoconData,
+    _int_or,
 )
 from .const import CONF_ZONE, DEFAULT_ZONE, DOMAIN
 from .coordinator import ElcoRemoconCoordinator
@@ -125,10 +126,13 @@ def _prog_day_slices(prog_data: Any, day: int) -> list[dict[str, Any]]:
     """Return the slices of one day across all plan entries of a program."""
     weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
     for plan in weekly.get("plans") or []:
-        for plan_day in plan.get("days") or []:
+        for plan_day in (plan.get("days") if isinstance(plan, dict) else None) or []:
+            if not isinstance(plan_day, dict):
+                continue
             try:
-                if int(plan_day.get("day", -1)) == day:
-                    return plan_day.get("slices") or []
+                if _int_or(plan_day.get("day"), -1) == day:
+                    slices = plan_day.get("slices")
+                    return [s for s in slices if isinstance(s, dict)] if isinstance(slices, list) else []
             except (TypeError, ValueError):
                 continue
     return []
@@ -136,14 +140,14 @@ def _prog_day_slices(prog_data: Any, day: int) -> list[dict[str, Any]]:
 
 def _prog_week_map(prog_data: Any) -> dict[str, Any]:
     """Full 7-day map of a program: day name -> list of {from, temp} slices."""
-    return {
-        _DAY_NAMES[day]: [
-            {"from": f"{int(s.get('from', 0)) // 60:02d}:{int(s.get('from', 0)) % 60:02d}",
-             "temp": s.get("temp")}
-            for s in _prog_day_slices(prog_data, day)
-        ]
-        for day in range(7)
-    }
+    out: dict[str, Any] = {}
+    for day in range(7):
+        slices: list[dict[str, Any]] = []
+        for s in _prog_day_slices(prog_data, day):
+            from_m = _int_or(s.get("from"), 0)
+            slices.append({"from": f"{from_m // 60:02d}:{from_m % 60:02d}", "temp": s.get("temp")})
+        out[_DAY_NAMES[day]] = slices
+    return out
 
 
 def _prog_timeline(prog_data: Any, day: int) -> list[str]:
@@ -152,7 +156,7 @@ def _prog_timeline(prog_data: Any, day: int) -> list[str]:
     allowed = weekly.get("allowedTemp") or [0, 1]
     slices = _prog_day_slices(prog_data, day)
     try:
-        slices = sorted(slices, key=lambda s: int(s.get("from", 0)))
+        slices = sorted(slices, key=lambda s: _int_or(s.get("from"), 0))
     except (TypeError, ValueError):
         pass
     slots: list[str] = []
@@ -160,11 +164,8 @@ def _prog_timeline(prog_data: Any, day: int) -> list[str]:
         minute = quarter * 15
         temp_idx = allowed.index(0) if 0 in allowed else 0
         for s in slices:
-            try:
-                if int(s.get("from", 0)) <= minute:
-                    temp_idx = int(s.get("temp", 0))
-            except (TypeError, ValueError):
-                continue
+            if _int_or(s.get("from"), 0) <= minute:
+                temp_idx = _int_or(s.get("temp"), 0)
         is_comfort = temp_idx == allowed.index(1) if 1 in allowed else False
         slots.append("comfort" if is_comfort else "reduced")
     return slots
@@ -262,11 +263,8 @@ class ElcoScheduleSensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity
         blocks: list[str] = []
         open_start: int | None = None
         for s in slices:
-            try:
-                from_m = int(s.get("from", 0))
-                temp = int(s.get("temp", 0))
-            except (TypeError, ValueError):
-                continue
+            from_m = _int_or(s.get("from"), 0)
+            temp = _int_or(s.get("temp"), 0)
             if comfort_idx is not None and temp == comfort_idx and open_start is None:
                 open_start = from_m
             elif temp != comfort_idx and open_start is not None:

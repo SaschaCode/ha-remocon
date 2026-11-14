@@ -138,6 +138,26 @@ def _optional_temperature(value: Any) -> float | None:
     return temperature if isfinite(temperature) else None
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return value if it is a dict, else an empty dict.
+
+    The gateway is inconsistent about list entry types in PlantTimeProg
+    responses (days/slices entries are dicts in some plans, plain ints in
+    others); never call .get on a non-dict.
+    """
+    return value if isinstance(value, dict) else {}
+
+
+def _int_or(value: Any, default: int) -> int:
+    """int(value) when parseable, else default — 0 is a valid value."""
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class RemoconApiError(Exception):
     """Base exception for API errors."""
 
@@ -785,8 +805,8 @@ class RemoconClient:
             weekly = data["timeProg"]["weeklyPlan"]
             plans = weekly.get("plans") or []
             day_slice_counts = [
-                len(d.get("slices") or [])
-                for p in plans for d in (p.get("days") or [])
+                len(_as_dict(d).get("slices") or [])
+                for p in plans for d in (_as_dict(p).get("days") or [])
             ]
             if (
                 prog_id in TIME_PROG_BUFFER_CANDIDATE_IDS
@@ -861,19 +881,21 @@ class RemoconClient:
         ]
         day_slices: dict[int, list[dict[str, Any]]] = {}
         for plan in weekly.get("plans") or []:
-            for plan_day in plan.get("days") or []:
+            for plan_day in _as_dict(plan).get("days") or []:
                 try:
-                    day_num = int(plan_day.get("day"))
+                    day_num = _int_or(_as_dict(plan_day).get("day"), -1)
                 except (TypeError, ValueError):
                     continue
-                day_slices[day_num] = plan_day.get("slices") or []
+                day_slices[day_num] = _as_dict(plan_day).get("slices") or []
         day_slices[day] = new_slices
 
         # Regroup days with identical slices into plan entries (web UI shape).
         groups: list[tuple[tuple, list[int]]] = []
         for day_num in range(7):
             slices = day_slices.get(day_num, [{"from": 0, "temp": reduced_idx}])
-            key = tuple((s.get("from"), s.get("temp")) for s in slices)
+            key = tuple(
+                (_as_dict(s).get("from"), _as_dict(s).get("temp")) for s in slices
+            )
             for group_key, days in groups:
                 if group_key == key:
                     days.append(day_num)
@@ -905,11 +927,11 @@ class RemoconClient:
         for attempt in range(3):
             verified = self.get_time_prog(prog_id)
             if verified is not None:
-                for plan in verified["timeProg"]["weeklyPlan"].get("plans") or []:
-                    for plan_day in plan.get("days") or []:
-                        if int(plan_day.get("day", -1)) == day:
-                            got = [(s.get("from"), s.get("temp"))
-                                   for s in plan_day.get("slices") or []]
+                for plan in _as_dict(verified["timeProg"]["weeklyPlan"]).get("plans") or []:
+                    for plan_day in _as_dict(plan).get("days") or []:
+                        if _int_or(_as_dict(plan_day).get("day"), -1) == day:
+                            got = [(_as_dict(s).get("from"), _as_dict(s).get("temp"))
+                                   for s in (_as_dict(plan_day).get("slices") or [])]
                             want = [(s["from"], s["temp"]) for s in new_slices]
                             if got == want:
                                 self._last_time_progs[prog_id] = verified
@@ -997,16 +1019,16 @@ class RemoconClient:
                 want = [(s["from"], s["temp"]) for s in new_slices]
                 seen_days: set[int] = set()
                 ok = True
-                for plan in verified["timeProg"]["weeklyPlan"].get("plans") or []:
-                    for plan_day in plan.get("days") or []:
+                for plan in _as_dict(verified["timeProg"]["weeklyPlan"]).get("plans") or []:
+                    for plan_day in _as_dict(plan).get("days") or []:
                         try:
-                            day_num = int(plan_day.get("day", -1))
+                            day_num = _int_or(_as_dict(plan_day).get("day"), -1)
                         except (TypeError, ValueError):
                             ok = False
                             continue
                         seen_days.add(day_num)
-                        got = [(s.get("from"), s.get("temp"))
-                               for s in plan_day.get("slices") or []]
+                        got = [(_as_dict(s).get("from"), _as_dict(s).get("temp"))
+                               for s in (_as_dict(plan_day).get("slices") or [])]
                         if got != want:
                             ok = False
                 if ok and seen_days == set(range(7)):

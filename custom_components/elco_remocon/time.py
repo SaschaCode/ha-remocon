@@ -24,6 +24,7 @@ from .api import (
     TIME_PROG_DHW_ID,
     TIME_PROG_HEATING_IDS,
     RemoconClient,
+    _int_or,
 )
 from .const import CONF_ZONE, DEFAULT_ZONE, DOMAIN
 from .coordinator import ElcoRemoconCoordinator
@@ -76,18 +77,25 @@ def _blocks_from_prog(prog_data: Any) -> list[tuple[int, int]]:
     comfort_idx = allowed.index(1)
     slices = []
     for plan in weekly.get("plans") or []:
+        if not isinstance(plan, dict):
+            continue
         for plan_day in plan.get("days") or []:
+            if not isinstance(plan_day, dict):
+                continue
             try:
-                if int(plan_day.get("day", -1)) == 1:
-                    slices = plan_day.get("slices") or []
+                if _int_or(plan_day.get("day"), -1) == 1:
+                    raw = plan_day.get("slices")
+                    slices = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
             except (TypeError, ValueError):
                 continue
     blocks: list[tuple[int, int]] = []
     open_start: int | None = None
     for s in slices:
+        if not isinstance(s, dict):
+            continue
         try:
-            from_m = int(s.get("from", 0))
-            temp = int(s.get("temp", 0))
+            from_m = _int_or(s.get("from"), 0)
+            temp = _int_or(s.get("temp"), 0)
         except (TypeError, ValueError):
             continue
         if temp == comfort_idx and open_start is None:
