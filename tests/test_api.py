@@ -1991,3 +1991,45 @@ def test_get_time_progs_tolerates_non_dict_plan_entries():
         progs = client.get_time_progs()
     assert 7 in progs
     assert 4 not in progs and 5 not in progs and 6 not in progs
+
+
+# ----------------------------------------------------------------------
+# Regression: gateway plan missing some weekdays must not crash the write
+# ----------------------------------------------------------------------
+
+def test_set_time_prog_slice_fills_missing_days():
+    """Live gateway returned plans without an entry for every weekday;
+    regrouping must default missing days to all-reduced instead of KeyError."""
+    client = make_client()
+    weekly = {
+        "allowedTemp": [0, 1],
+        "maxSwitches": 6,
+        "plans": [
+            # only Monday present — days 0,2..6 missing
+            {"days": [{"day": 1, "slices": [
+                {"from": 0, "temp": 0}, {"from": 360, "temp": 1}, {"from": 1020, "temp": 0},
+            ]}]},
+        ],
+    }
+    prog = {"timeProg": {"weeklyPlan": weekly}}
+    posted = {}
+
+    def fake_get(prog_id):
+        # After the POST, the gateway read-back returns the new plan:
+        # all days with the written block for day 3, all-reduced elsewhere.
+        written = posted.get("json")
+        if written is not None:
+            return {"timeProg": written["timeProg"]}
+        return prog
+
+    def fake_post(method, url, **kwargs):
+        posted["url"] = url
+        posted["json"] = kwargs.get("json")
+        return {"ok": True}
+
+    client.get_time_prog = fake_get
+    client._request = fake_post
+    client.set_time_prog_slice(7, 3, "06:45", "22:00")
+    plans = posted["json"]["timeProg"]["weeklyPlan"]["plans"]
+    all_days = {d["day"] for p in plans for d in p["days"]}
+    assert all_days == set(range(7))  # all 7 days present after regroup

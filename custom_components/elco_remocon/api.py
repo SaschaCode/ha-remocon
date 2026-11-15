@@ -888,6 +888,10 @@ class RemoconClient:
                     continue
                 day_slices[day_num] = _as_dict(plan_day).get("slices") or []
         day_slices[day] = new_slices
+        # Ensure every weekday has an entry, even if the gateway's plan
+        # omitted it (KeyError otherwise when regrouping).
+        for day_num in range(7):
+            day_slices.setdefault(day_num, [{"from": 0, "temp": reduced_idx}])
 
         # Regroup days with identical slices into plan entries (web UI shape).
         groups: list[tuple[tuple, list[int]]] = []
