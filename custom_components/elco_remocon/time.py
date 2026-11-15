@@ -156,7 +156,8 @@ class ElcoScheduleTime(CoordinatorEntity[ElcoRemoconCoordinator], TimeEntity):
             return None
         blocks = _blocks_from_prog(prog_data, self._day)
         if not blocks:
-            return None
+            # reduced all day: show 00:00 instead of "unknown"
+            return dt_time(0, 0)
         start, end = blocks[0]
         return _minutes_to_time(start if self._part == "start" else end)
 
