@@ -53,7 +53,8 @@ def _prog_data(data: Any, prog_id: int) -> Any:
 
 def _blocks_from_prog(prog_data: Any, day: int = 1) -> list[tuple[int, int]]:
     """Extract comfort blocks (start, end minutes) from a program's plan
-    for one day (default Monday = JS day 1)."""
+    for one day (default Monday = JS day 1). Merges the day's slices across
+    all plan entries (the gateway may split one day over several plans)."""
     weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
     allowed = weekly.get("allowedTemp") or [0, 1]
     if 1 not in allowed:
@@ -68,7 +69,12 @@ def _blocks_from_prog(prog_data: Any, day: int = 1) -> list[tuple[int, int]]:
                 continue
             if _int_or(plan_day.get("day"), -1) == day:
                 raw = plan_day.get("slices")
-                slices = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
+                if isinstance(raw, list):
+                    slices.extend(s for s in raw if isinstance(s, dict))
+    try:
+        slices = sorted(slices, key=lambda s: _int_or(s.get("from"), 0))
+    except (TypeError, ValueError):
+        pass
     blocks: list[tuple[int, int]] = []
     open_start: int | None = None
     for s in slices:

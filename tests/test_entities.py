@@ -626,3 +626,40 @@ def test_service_rejects_day_with_blocks(platforms):
 def test_service_rejects_missing_times(platforms):
     with pytest.raises(ValueError):
         _run_service(platforms, {"program": "dhw"})
+
+
+# ----------------------------------------------------------------------
+# Regression: a day split across several plan entries must merge, not read empty
+# ----------------------------------------------------------------------
+
+SPLIT_DAY_PROG = {
+    "timeProg": {
+        "weeklyPlan": {
+            "allowedTemp": [0, 1],
+            "plans": [
+                {"days": [{"day": 1, "slices": [{"from": 0, "temp": 0}]}]},
+                {"days": [{"day": 1, "slices": [
+                    {"from": 360, "temp": 1}, {"from": 1020, "temp": 0},
+                ]}]},
+                {"days": [{"day": 2, "slices": [{"from": 0, "temp": 0}, {"from": 360, "temp": 1}, {"from": 1020, "temp": 0}]}]},
+            ],
+        }
+    }
+}
+
+
+def test_schedule_sensor_merges_day_split_across_plans(platforms):
+    from custom_components.elco_remocon.sensor import _prog_day_slices, _prog_week_map, _prog_timeline
+    # Monday (JS day 1) is split over two plan entries
+    slices = _prog_day_slices(SPLIT_DAY_PROG, 1)
+    assert len(slices) == 3
+    week = _prog_week_map(SPLIT_DAY_PROG)
+    assert [s["from"] for s in week["mon"]] == ["00:00", "06:00", "17:00"]
+    tl = _prog_timeline(SPLIT_DAY_PROG, 1)
+    assert tl[24] == "comfort" and tl[23] == "reduced" and tl[68] == "reduced"
+
+
+def test_time_blocks_merge_day_split_across_plans(platforms):
+    from custom_components.elco_remocon.time import _blocks_from_prog
+    blocks = _blocks_from_prog(SPLIT_DAY_PROG, day=1)
+    assert blocks == [(360, 1020)]

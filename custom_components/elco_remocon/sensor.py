@@ -123,8 +123,13 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
 
 
 def _prog_day_slices(prog_data: Any, day: int) -> list[dict[str, Any]]:
-    """Return the slices of one day across all plan entries of a program."""
+    """Return the slices of one day across all plan entries of a program.
+
+    Days may appear in several plan entries (the gateway splits them); merge
+    them so a day split across plans is not read as empty.
+    """
     weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
+    merged: list[dict[str, Any]] = []
     for plan in weekly.get("plans") or []:
         for plan_day in (plan.get("days") if isinstance(plan, dict) else None) or []:
             if not isinstance(plan_day, dict):
@@ -132,10 +137,11 @@ def _prog_day_slices(prog_data: Any, day: int) -> list[dict[str, Any]]:
             try:
                 if _int_or(plan_day.get("day"), -1) == day:
                     slices = plan_day.get("slices")
-                    return [s for s in slices if isinstance(s, dict)] if isinstance(slices, list) else []
+                    if isinstance(slices, list):
+                        merged.extend(s for s in slices if isinstance(s, dict))
             except (TypeError, ValueError):
                 continue
-    return []
+    return merged
 
 
 def _prog_week_map(prog_data: Any) -> dict[str, Any]:
