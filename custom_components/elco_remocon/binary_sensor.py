@@ -28,6 +28,10 @@ class ElcoBinarySensorDescription(BinarySensorEntityDescription):
     key: str
     translation_key: str
     device_class: BinarySensorDeviceClass | None = None
+    # When True on a flat R2 gateway, the entity is always created at setup
+    # (source item live-verified on that family); state shows unknown until the
+    # first successful read.
+    create_on_flat: bool = False
     value_fn: Callable[[RemoconData], bool | None]
     exists_fn: Callable[[RemoconData], bool] = lambda _: True
 
@@ -68,6 +72,36 @@ BINARY_SENSORS: tuple[ElcoBinarySensorDescription, ...] = (
         value_fn=lambda d: d.heat_or_cool_request,
         exists_fn=lambda d: d.heat_or_cool_request is not None,
     ),
+    # --- Diagnostics (flat R2; no entity when the item is missing) ---
+    ElcoBinarySensorDescription(
+        key="backup_heater",
+        translation_key="backup_heater",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda d: d.backup_heater_on,
+        exists_fn=lambda d: d.backup_heater_on is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="defrost",
+        translation_key="defrost",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        create_on_flat=True,  # derived from menuItem 340 on flat R2 gateways
+        value_fn=lambda d: d.defrost_active,
+        exists_fn=lambda d: d.defrost_active is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="dhw_request",
+        translation_key="dhw_request",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda d: d.dhw_request,
+        exists_fn=lambda d: d.dhw_request is not None,
+    ),
+    ElcoBinarySensorDescription(
+        key="dhw_heating_rod",
+        translation_key="dhw_heating_rod",
+        device_class=BinarySensorDeviceClass.HEAT,
+        value_fn=lambda d: d.dhw_heating_rod_on,
+        exists_fn=lambda d: d.dhw_heating_rod_on is not None,
+    ),
 )
 
 
@@ -81,10 +115,11 @@ async def async_setup_entry(
     gw_id = entry.data["gateway_id"]
     zone = entry.data.get(CONF_ZONE, DEFAULT_ZONE)
 
+    flat = coordinator.client.is_flat_api
     entities = [
         ElcoBinarySensor(coordinator, gw_id, zone, desc)
         for desc in BINARY_SENSORS
-        if desc.exists_fn(coordinator.data)
+        if desc.exists_fn(coordinator.data) or (flat and desc.create_on_flat)
     ]
     async_add_entities(entities)
 

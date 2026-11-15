@@ -66,6 +66,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Apply scan-interval changes from the options flow without a restart.
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     async def handle_set_time_program(call: ServiceCall) -> None:
         """Set a time program: single block (comfort_start/end), optionally
         for one day only, or multiple blocks applied to the whole week."""
@@ -106,7 +109,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN, "set_time_program", handle_set_time_program,
         schema=SET_TIME_PROGRAM_SCHEMA,
     )
+
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the entry when options change (e.g. scan interval)."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

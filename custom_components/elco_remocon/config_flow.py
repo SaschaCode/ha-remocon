@@ -12,7 +12,16 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import RemoconAuthError, RemoconClient, RemoconConnectionError, RemoconDataError
-from .const import CONF_GATEWAY_ID, CONF_ZONE, DEFAULT_ZONE, DOMAIN
+from .const import (
+    CONF_GATEWAY_ID,
+    CONF_SCAN_INTERVAL,
+    CONF_ZONE,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_ZONE,
+    DOMAIN,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+)
 from .identifiers import config_entry_unique_id, has_gateway_zone_entry
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,3 +92,31 @@ class ElcoRemoconConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
         )
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> "ElcoRemoconOptionsFlow":
+        """Get the options flow for this handler."""
+        return ElcoRemoconOptionsFlow()
+
+
+class ElcoRemoconOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for Elco Remocon-Net (poll interval)."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the poll interval option."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        schema = vol.Schema({
+            vol.Optional(CONF_SCAN_INTERVAL, default=current): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+            ),
+        })
+        return self.async_show_form(step_id="init", data_schema=schema)
