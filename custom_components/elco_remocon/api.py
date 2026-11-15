@@ -1231,10 +1231,24 @@ class RemoconClient:
                     break
             else:
                 groups.append((key, [day_num]))
-        plans = [
-            {"days": [{"day": d, "slices": day_slices[d]} for d in days]}
-            for _, days in groups
-        ]
+        # Preserve the gateway's native plan shape: flat plans use
+        # {"days": [ints], "slices": [...]} at plan level; only per-day-dict
+        # plans regroup identical days into per-day entries.
+        native_flat = any(
+            not isinstance(d, dict)
+            for p in weekly.get("plans") or []
+            for d in (_as_dict(p).get("days") or [])
+        )
+        if native_flat:
+            plans = [
+                {"days": days, "slices": day_slices[days[0]]}
+                for _, days in groups
+            ]
+        else:
+            plans = [
+                {"days": [{"day": d, "slices": day_slices[d]} for d in days]}
+                for _, days in groups
+            ]
 
         payload = self._time_prog_payload(prog_id)
         payload["features"]["gatewayId"] = self._gateway_id
@@ -1328,7 +1342,15 @@ class RemoconClient:
             new_slices.append({"from": end_m, "temp": reduced_idx})
 
         day_slices = {day: new_slices for day in range(7)}
-        plans = [{"days": [{"day": d, "slices": new_slices} for d in range(7)]}]
+        native_flat = any(
+            not isinstance(d, dict)
+            for p in weekly.get("plans") or []
+            for d in (_as_dict(p).get("days") or [])
+        )
+        if native_flat:
+            plans = [{"days": list(range(7)), "slices": new_slices}]
+        else:
+            plans = [{"days": [{"day": d, "slices": new_slices} for d in range(7)]}]
 
         payload = self._time_prog_payload(prog_id)
         payload["features"]["gatewayId"] = self._gateway_id

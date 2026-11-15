@@ -2101,3 +2101,58 @@ def test_set_time_prog_slice_maxswitches_zero_is_allowed():
         mock_request.side_effect = router
         client.set_time_prog_slice(7, 1, "06:45", "22:00")
     assert posted["json"]["timeProg"]["progId"] == 7
+
+
+def test_set_time_prog_slice_preserves_flat_plan_shape():
+    # Live gateway shape: days as ints, slices at plan level. The write must
+    # POST the same shape or the gateway silently drops the change.
+    client = _flat_client()
+    posted = {}
+    flat_prog = {
+        "timeProg": {"progId": 7, "weeklyPlan": {
+            "allowedTemp": [0, 1], "maxSwitches": 0,
+            "plans": [{"days": [1, 2, 3, 4, 5, 6, 0],
+                       "slices": [{"from": 0, "temp": 0}]}]},
+        }
+    }
+    with patch.object(client, "_request") as mock_request:
+        def router(method, path, **kwargs):
+            if "SetTimeProg" in path:
+                posted["json"] = kwargs["json"]
+                posted["timeProg"] = kwargs["json"]["timeProg"]
+                return {"ok": True, "data": {"timeProg": posted["timeProg"]}}
+            if posted.get("timeProg") is not None:
+                return {"ok": True, "data": {"timeProg": posted["timeProg"]}}
+            return _timeprog_response(flat_prog)
+        mock_request.side_effect = router
+        client.set_time_prog_slice(7, 1, "06:45", "22:00")
+    plans = posted["json"]["timeProg"]["weeklyPlan"]["plans"]
+    flat_days = [d for p in plans for d in p["days"]]
+    assert all(not isinstance(d, dict) for d in flat_days)
+    assert 1 in flat_days and len(plans) >= 1
+
+
+def test_set_time_prog_week_preserves_flat_plan_shape():
+    client = _flat_client()
+    posted = {}
+    flat_prog = {
+        "timeProg": {"progId": 7, "weeklyPlan": {
+            "allowedTemp": [0, 1], "maxSwitches": 0,
+            "plans": [{"days": [1, 2, 3, 4, 5, 6, 0],
+                       "slices": [{"from": 0, "temp": 0}]}]},
+        }
+    }
+    with patch.object(client, "_request") as mock_request:
+        def router(method, path, **kwargs):
+            if "SetTimeProg" in path:
+                posted["json"] = kwargs["json"]
+                posted["timeProg"] = kwargs["json"]["timeProg"]
+                return {"ok": True, "data": {"timeProg": posted["timeProg"]}}
+            if posted.get("timeProg") is not None:
+                return {"ok": True, "data": {"timeProg": posted["timeProg"]}}
+            return _timeprog_response(flat_prog)
+        mock_request.side_effect = router
+        client.set_time_prog_week(7, [("06:45", "22:00")])
+    plans = posted["json"]["timeProg"]["weeklyPlan"]["plans"]
+    assert all(not isinstance(d, dict) for d in plans[0]["days"])
+    assert plans[0]["days"] == list(range(7))
