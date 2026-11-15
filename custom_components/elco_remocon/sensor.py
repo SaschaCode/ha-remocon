@@ -383,7 +383,99 @@ async def async_setup_entry(
             for key, translation_key, prog, exists in SCHEDULE_PROGRAMS
             if exists(coordinator.data)
         )
+        # Per-day read-back sensors for the writable programs (day 0=Sunday..6=Saturday).
+        day_progs = SCHEDULE_PROGRAMS[:4]  # heating_z1..3 + dhw (buffer stays read-only weekly)
+        entities.extend(
+            ElcoScheduleDaySensor(coordinator, gw_id, zone, key.split("_", 1)[1], translation_key.split("_", 1)[1], prog, day)
+            for key, translation_key, prog, exists in day_progs
+            if exists(coordinator.data)
+            for day in range(7)
+        )
     async_add_entities(entities)
+
+
+def _prog_day_blocks(prog_data: Any, day: int) -> list[str]:
+    """Comfort blocks of one day as ['HH:MM-HH:MM', ...]."""
+    weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
+    allowed = weekly.get("allowedTemp") or [0, 1]
+    comfort_idx = allowed.index(1) if 1 in allowed else None
+    slices = _prog_day_slices(prog_data, day)
+    try:
+        slices = sorted(slices, key=lambda s: _int_or(s.get("from"), 0))
+    except (TypeError, ValueError):
+        pass
+    blocks: list[str] = []
+    open_start: int | None = None
+    for s in slices:
+        from_m = _int_or(s.get("from"), 0)
+        temp = _int_or(s.get("temp"), 0)
+        if comfort_idx is not None and temp == comfort_idx and open_start is None:
+            open_start = from_m
+        elif temp != comfort_idx and open_start is not None:
+            blocks.append(
+                f"{open_start // 60:02d}:{open_start % 60:02d}-"
+                f"{from_m // 60:02d}:{from_m % 60:02d}"
+            )
+            open_start = None
+    return blocks
+
+
+class ElcoScheduleDaySensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity):
+    """Read-back of one weekday of a time program: that day's comfort blocks
+    as state ('HH:MM-HH:MM, ...' or 'reduced'), the day's slices and its
+    96-slot quarter-hour timeline as attributes."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: ElcoRemoconCoordinator,
+        gw_id: str,
+        zone: str,
+        prefix: str,
+        translation_prefix: str,
+        prog_id: int,
+        day: int,  # JS Date.getDay(): 0=Sunday .. 6=Saturday
+    ) -> None:
+        super().__init__(coordinator)
+        self._prog_id = prog_id
+        self._day = day
+        key = f"schedule_{prefix}_d{day}"
+        self._attr_translation_key = f"schedule_{translation_prefix}_day{day}"
+        self._attr_unique_id = entity_unique_id(gw_id, zone, key)
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, gw_id)},
+            "name": "Remocon-Net Heat Pump",
+            "manufacturer": "Elco",
+            "model": "Aerotop SPK",
+        }
+
+    def _prog_data(self) -> Any:
+        return self.coordinator.data.time_progs.get(self._prog_id)
+
+    @property
+    def native_value(self) -> StateType:
+        prog_data = self._prog_data()
+        if prog_data is None:
+            return None
+        blocks = _prog_day_blocks(prog_data, self._day)
+        return ", ".join(blocks) if blocks else "reduced"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        prog_data = self._prog_data()
+        if prog_data is None:
+            return {}
+        return {
+            "day": _DAY_NAMES[self._day],
+            "slices": [
+                {"from": f"{_int_or(s.get('from'), 0) // 60:02d}:{_int_or(s.get('from'), 0) % 60:02d}",
+                 "temp": s.get("temp")}
+                for s in _prog_day_slices(prog_data, self._day)
+            ],
+            "timeline": _prog_timeline(prog_data, self._day),
+        }
 
 
 class ElcoScheduleSensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEntity):

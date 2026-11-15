@@ -69,6 +69,90 @@
       },
       "schedule_buffer": {
         "name": "Puffer Zeitplan"
+      },
+      "schedule_heating_z1_day0": {
+        "name": "Heizkreis 1 Sonntag zeitplan"
+      },
+      "schedule_heating_z1_day1": {
+        "name": "Heizkreis 1 Montag zeitplan"
+      },
+      "schedule_heating_z1_day2": {
+        "name": "Heizkreis 1 Dienstag zeitplan"
+      },
+      "schedule_heating_z1_day3": {
+        "name": "Heizkreis 1 Mittwoch zeitplan"
+      },
+      "schedule_heating_z1_day4": {
+        "name": "Heizkreis 1 Donnerstag zeitplan"
+      },
+      "schedule_heating_z1_day5": {
+        "name": "Heizkreis 1 Freitag zeitplan"
+      },
+      "schedule_heating_z1_day6": {
+        "name": "Heizkreis 1 Samstag zeitplan"
+      },
+      "schedule_heating_z2_day0": {
+        "name": "Heizkreis 2 Sonntag zeitplan"
+      },
+      "schedule_heating_z2_day1": {
+        "name": "Heizkreis 2 Montag zeitplan"
+      },
+      "schedule_heating_z2_day2": {
+        "name": "Heizkreis 2 Dienstag zeitplan"
+      },
+      "schedule_heating_z2_day3": {
+        "name": "Heizkreis 2 Mittwoch zeitplan"
+      },
+      "schedule_heating_z2_day4": {
+        "name": "Heizkreis 2 Donnerstag zeitplan"
+      },
+      "schedule_heating_z2_day5": {
+        "name": "Heizkreis 2 Freitag zeitplan"
+      },
+      "schedule_heating_z2_day6": {
+        "name": "Heizkreis 2 Samstag zeitplan"
+      },
+      "schedule_heating_z3_day0": {
+        "name": "Heizkreis 3 Sonntag zeitplan"
+      },
+      "schedule_heating_z3_day1": {
+        "name": "Heizkreis 3 Montag zeitplan"
+      },
+      "schedule_heating_z3_day2": {
+        "name": "Heizkreis 3 Dienstag zeitplan"
+      },
+      "schedule_heating_z3_day3": {
+        "name": "Heizkreis 3 Mittwoch zeitplan"
+      },
+      "schedule_heating_z3_day4": {
+        "name": "Heizkreis 3 Donnerstag zeitplan"
+      },
+      "schedule_heating_z3_day5": {
+        "name": "Heizkreis 3 Freitag zeitplan"
+      },
+      "schedule_heating_z3_day6": {
+        "name": "Heizkreis 3 Samstag zeitplan"
+      },
+      "schedule_dhw_day0": {
+        "name": "Warmwasser Sonntag zeitplan"
+      },
+      "schedule_dhw_day1": {
+        "name": "Warmwasser Montag zeitplan"
+      },
+      "schedule_dhw_day2": {
+        "name": "Warmwasser Dienstag zeitplan"
+      },
+      "schedule_dhw_day3": {
+        "name": "Warmwasser Mittwoch zeitplan"
+      },
+      "schedule_dhw_day4": {
+        "name": "Warmwasser Donnerstag zeitplan"
+      },
+      "schedule_dhw_day5": {
+        "name": "Warmwasser Freitag zeitplan"
+      },
+      "schedule_dhw_day6": {
+        "name": "Warmwasser Samstag zeitplan"
       }
     },
     "binary_sensor": {

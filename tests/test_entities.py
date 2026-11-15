@@ -176,7 +176,8 @@ def setup_entities(platforms, data, zone="1", flat_api=False):
     return types.SimpleNamespace(
         coordinator=coordinator, entry=entry, hass=hass,
         sensors={e.entity_description.key: e for e in sensors if hasattr(e, "entity_description")},
-        schedule_sensors=[e for e in sensors if not hasattr(e, "entity_description")],
+        schedule_sensors=[e for e in sensors if type(e).__name__ == "ElcoScheduleSensor"],
+        schedule_day_sensors=[e for e in sensors if type(e).__name__ == "ElcoScheduleDaySensor"],
         binaries={entity.entity_description.key: entity for entity in binaries},
         selects={entity.entity_description.key: entity for entity in selects},
         numbers={entity.entity_description.key: entity for entity in numbers},
@@ -468,6 +469,20 @@ SCHEDULE_PROG = {
 
 def _schedule_data(**kwargs):
     return RemoconData(time_progs={7: SCHEDULE_PROG, 1: SCHEDULE_PROG}, **kwargs)
+
+
+def test_schedule_day_sensors_created_7_per_writable_program(platforms):
+    state = setup_entities(platforms, _schedule_data(), flat_api=True)
+    # fixture data has progIds 1 and 7 -> 2 writable programs x 7 days = 14
+    assert len(state.schedule_day_sensors) == 2 * 7
+    assert not any("buffer" in e._attr_unique_id for e in state.schedule_day_sensors)
+    dhw_mon = next(e for e in state.schedule_day_sensors if "schedule_dhw_d1" in e._attr_unique_id)
+    assert dhw_mon._day == 1
+    assert dhw_mon.native_value == "06:00-17:00"
+    assert dhw_mon.extra_state_attributes["day"] == "mon"
+    assert len(dhw_mon.extra_state_attributes["timeline"]) == 96
+    z1_sat = next(e for e in state.schedule_day_sensors if "schedule_heating_z1_d6" in e._attr_unique_id)
+    assert z1_sat.native_value == "06:00-17:00"
 
 
 def test_schedule_sensors_created_only_with_programs(platforms):

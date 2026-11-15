@@ -69,6 +69,90 @@
       },
       "schedule_buffer": {
         "name": "Buffer Schedule"
+      },
+      "schedule_heating_z1_day0": {
+        "name": "Heating Zone 1 Sunday schedule"
+      },
+      "schedule_heating_z1_day1": {
+        "name": "Heating Zone 1 Monday schedule"
+      },
+      "schedule_heating_z1_day2": {
+        "name": "Heating Zone 1 Tuesday schedule"
+      },
+      "schedule_heating_z1_day3": {
+        "name": "Heating Zone 1 Wednesday schedule"
+      },
+      "schedule_heating_z1_day4": {
+        "name": "Heating Zone 1 Thursday schedule"
+      },
+      "schedule_heating_z1_day5": {
+        "name": "Heating Zone 1 Friday schedule"
+      },
+      "schedule_heating_z1_day6": {
+        "name": "Heating Zone 1 Saturday schedule"
+      },
+      "schedule_heating_z2_day0": {
+        "name": "Heating Zone 2 Sunday schedule"
+      },
+      "schedule_heating_z2_day1": {
+        "name": "Heating Zone 2 Monday schedule"
+      },
+      "schedule_heating_z2_day2": {
+        "name": "Heating Zone 2 Tuesday schedule"
+      },
+      "schedule_heating_z2_day3": {
+        "name": "Heating Zone 2 Wednesday schedule"
+      },
+      "schedule_heating_z2_day4": {
+        "name": "Heating Zone 2 Thursday schedule"
+      },
+      "schedule_heating_z2_day5": {
+        "name": "Heating Zone 2 Friday schedule"
+      },
+      "schedule_heating_z2_day6": {
+        "name": "Heating Zone 2 Saturday schedule"
+      },
+      "schedule_heating_z3_day0": {
+        "name": "Heating Zone 3 Sunday schedule"
+      },
+      "schedule_heating_z3_day1": {
+        "name": "Heating Zone 3 Monday schedule"
+      },
+      "schedule_heating_z3_day2": {
+        "name": "Heating Zone 3 Tuesday schedule"
+      },
+      "schedule_heating_z3_day3": {
+        "name": "Heating Zone 3 Wednesday schedule"
+      },
+      "schedule_heating_z3_day4": {
+        "name": "Heating Zone 3 Thursday schedule"
+      },
+      "schedule_heating_z3_day5": {
+        "name": "Heating Zone 3 Friday schedule"
+      },
+      "schedule_heating_z3_day6": {
+        "name": "Heating Zone 3 Saturday schedule"
+      },
+      "schedule_dhw_day0": {
+        "name": "DHW Sunday schedule"
+      },
+      "schedule_dhw_day1": {
+        "name": "DHW Monday schedule"
+      },
+      "schedule_dhw_day2": {
+        "name": "DHW Tuesday schedule"
+      },
+      "schedule_dhw_day3": {
+        "name": "DHW Wednesday schedule"
+      },
+      "schedule_dhw_day4": {
+        "name": "DHW Thursday schedule"
+      },
+      "schedule_dhw_day5": {
+        "name": "DHW Friday schedule"
+      },
+      "schedule_dhw_day6": {
+        "name": "DHW Saturday schedule"
       }
     },
     "binary_sensor": {
