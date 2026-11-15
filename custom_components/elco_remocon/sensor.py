@@ -467,8 +467,15 @@ class ElcoScheduleDaySensor(CoordinatorEntity[ElcoRemoconCoordinator], SensorEnt
         prog_data = self._prog_data()
         if prog_data is None:
             return {}
+        blocks = _prog_day_blocks(prog_data, self._day)
+        comfort_minutes = sum(
+            int(b.split("-")[1].replace(":", "")) // 100 * 60 + int(b.split("-")[1].replace(":", "")) % 100
+            - (int(b.split("-")[0].replace(":", "")) // 100 * 60 + int(b.split("-")[0].replace(":", "")) % 100)
+            for b in blocks
+        )
         return {
             "day": _DAY_NAMES[self._day],
+            "comfort_minutes": comfort_minutes,
             "slices": [
                 {"from": f"{_int_or(s.get('from'), 0) // 60:02d}:{_int_or(s.get('from'), 0) % 60:02d}",
                  "temp": s.get("temp")}
