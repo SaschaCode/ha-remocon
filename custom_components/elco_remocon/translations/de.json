@@ -140,29 +140,173 @@
       }
     },
     "time": {
-      "schedule_heating_z1_start": {
-        "name": "Heizkreis 1 Start"
+      "schedule_heating_z1_day0_start": {
+        "name": "Heizkreis 1 Sonntag Start"
       },
-      "schedule_heating_z1_end": {
-        "name": "Heizkreis 1 Ende"
+      "schedule_heating_z1_day0_end": {
+        "name": "Heizkreis 1 Sonntag Ende"
       },
-      "schedule_heating_z2_start": {
-        "name": "Heizkreis 2 Start"
+      "schedule_heating_z1_day1_start": {
+        "name": "Heizkreis 1 Montag Start"
       },
-      "schedule_heating_z2_end": {
-        "name": "Heizkreis 2 Ende"
+      "schedule_heating_z1_day1_end": {
+        "name": "Heizkreis 1 Montag Ende"
       },
-      "schedule_heating_z3_start": {
-        "name": "Heizkreis 3 Start"
+      "schedule_heating_z1_day2_start": {
+        "name": "Heizkreis 1 Dienstag Start"
       },
-      "schedule_heating_z3_end": {
-        "name": "Heizkreis 3 Ende"
+      "schedule_heating_z1_day2_end": {
+        "name": "Heizkreis 1 Dienstag Ende"
       },
-      "schedule_dhw_start": {
-        "name": "Warmwasser Start"
+      "schedule_heating_z1_day3_start": {
+        "name": "Heizkreis 1 Mittwoch Start"
       },
-      "schedule_dhw_end": {
-        "name": "Warmwasser Ende"
+      "schedule_heating_z1_day3_end": {
+        "name": "Heizkreis 1 Mittwoch Ende"
+      },
+      "schedule_heating_z1_day4_start": {
+        "name": "Heizkreis 1 Donnerstag Start"
+      },
+      "schedule_heating_z1_day4_end": {
+        "name": "Heizkreis 1 Donnerstag Ende"
+      },
+      "schedule_heating_z1_day5_start": {
+        "name": "Heizkreis 1 Freitag Start"
+      },
+      "schedule_heating_z1_day5_end": {
+        "name": "Heizkreis 1 Freitag Ende"
+      },
+      "schedule_heating_z1_day6_start": {
+        "name": "Heizkreis 1 Samstag Start"
+      },
+      "schedule_heating_z1_day6_end": {
+        "name": "Heizkreis 1 Samstag Ende"
+      },
+      "schedule_heating_z2_day0_start": {
+        "name": "Heizkreis 2 Sonntag Start"
+      },
+      "schedule_heating_z2_day0_end": {
+        "name": "Heizkreis 2 Sonntag Ende"
+      },
+      "schedule_heating_z2_day1_start": {
+        "name": "Heizkreis 2 Montag Start"
+      },
+      "schedule_heating_z2_day1_end": {
+        "name": "Heizkreis 2 Montag Ende"
+      },
+      "schedule_heating_z2_day2_start": {
+        "name": "Heizkreis 2 Dienstag Start"
+      },
+      "schedule_heating_z2_day2_end": {
+        "name": "Heizkreis 2 Dienstag Ende"
+      },
+      "schedule_heating_z2_day3_start": {
+        "name": "Heizkreis 2 Mittwoch Start"
+      },
+      "schedule_heating_z2_day3_end": {
+        "name": "Heizkreis 2 Mittwoch Ende"
+      },
+      "schedule_heating_z2_day4_start": {
+        "name": "Heizkreis 2 Donnerstag Start"
+      },
+      "schedule_heating_z2_day4_end": {
+        "name": "Heizkreis 2 Donnerstag Ende"
+      },
+      "schedule_heating_z2_day5_start": {
+        "name": "Heizkreis 2 Freitag Start"
+      },
+      "schedule_heating_z2_day5_end": {
+        "name": "Heizkreis 2 Freitag Ende"
+      },
+      "schedule_heating_z2_day6_start": {
+        "name": "Heizkreis 2 Samstag Start"
+      },
+      "schedule_heating_z2_day6_end": {
+        "name": "Heizkreis 2 Samstag Ende"
+      },
+      "schedule_heating_z3_day0_start": {
+        "name": "Heizkreis 3 Sonntag Start"
+      },
+      "schedule_heating_z3_day0_end": {
+        "name": "Heizkreis 3 Sonntag Ende"
+      },
+      "schedule_heating_z3_day1_start": {
+        "name": "Heizkreis 3 Montag Start"
+      },
+      "schedule_heating_z3_day1_end": {
+        "name": "Heizkreis 3 Montag Ende"
+      },
+      "schedule_heating_z3_day2_start": {
+        "name": "Heizkreis 3 Dienstag Start"
+      },
+      "schedule_heating_z3_day2_end": {
+        "name": "Heizkreis 3 Dienstag Ende"
+      },
+      "schedule_heating_z3_day3_start": {
+        "name": "Heizkreis 3 Mittwoch Start"
+      },
+      "schedule_heating_z3_day3_end": {
+        "name": "Heizkreis 3 Mittwoch Ende"
+      },
+      "schedule_heating_z3_day4_start": {
+        "name": "Heizkreis 3 Donnerstag Start"
+      },
+      "schedule_heating_z3_day4_end": {
+        "name": "Heizkreis 3 Donnerstag Ende"
+      },
+      "schedule_heating_z3_day5_start": {
+        "name": "Heizkreis 3 Freitag Start"
+      },
+      "schedule_heating_z3_day5_end": {
+        "name": "Heizkreis 3 Freitag Ende"
+      },
+      "schedule_heating_z3_day6_start": {
+        "name": "Heizkreis 3 Samstag Start"
+      },
+      "schedule_heating_z3_day6_end": {
+        "name": "Heizkreis 3 Samstag Ende"
+      },
+      "schedule_dhw_day0_start": {
+        "name": "Warmwasser Sonntag Start"
+      },
+      "schedule_dhw_day0_end": {
+        "name": "Warmwasser Sonntag Ende"
+      },
+      "schedule_dhw_day1_start": {
+        "name": "Warmwasser Montag Start"
+      },
+      "schedule_dhw_day1_end": {
+        "name": "Warmwasser Montag Ende"
+      },
+      "schedule_dhw_day2_start": {
+        "name": "Warmwasser Dienstag Start"
+      },
+      "schedule_dhw_day2_end": {
+        "name": "Warmwasser Dienstag Ende"
+      },
+      "schedule_dhw_day3_start": {
+        "name": "Warmwasser Mittwoch Start"
+      },
+      "schedule_dhw_day3_end": {
+        "name": "Warmwasser Mittwoch Ende"
+      },
+      "schedule_dhw_day4_start": {
+        "name": "Warmwasser Donnerstag Start"
+      },
+      "schedule_dhw_day4_end": {
+        "name": "Warmwasser Donnerstag Ende"
+      },
+      "schedule_dhw_day5_start": {
+        "name": "Warmwasser Freitag Start"
+      },
+      "schedule_dhw_day5_end": {
+        "name": "Warmwasser Freitag Ende"
+      },
+      "schedule_dhw_day6_start": {
+        "name": "Warmwasser Samstag Start"
+      },
+      "schedule_dhw_day6_end": {
+        "name": "Warmwasser Samstag Ende"
       }
     }
   },

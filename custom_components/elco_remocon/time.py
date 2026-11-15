@@ -1,14 +1,14 @@
-"""Time entities for Elco Remocon-Net — writable weekly schedule blocks.
+"""Time entities for Elco Remocon-Net — per-day writable schedule blocks.
 
-Each writable program (DHW, heating zones) gets ONE start and ONE end
-`time` entity (block 1) — mirroring the Remocon web UI, which shows one
-time window per day view. Writing applies that block to the whole week via
-RemoconClient.set_time_prog_week (SetTimeProg, read-back verified).
+Each writable program (DHW, heating zones) gets, for EVERY weekday
+(0=Sunday .. 6=Saturday, JS Date.getDay() order), ONE start and ONE end
+`time` entity (block 1 of that day). Reading returns that day's current
+comfort window; writing changes only that day via
+RemoconClient.set_time_prog_slice (SetTimeProg, read-back verified).
 
-Per-day schedules and additional blocks (2-3) are not separate entities to
-avoid a long flat list; they are set through the `elco_remocon.set_time_program`
-service (registered in __init__.py), which supports `day` and multiple blocks.
-The read-back sensors in sensor.py mirror the result.
+Additional blocks (2-3) and whole-week writes are available through the
+`elco_remocon.set_time_program` service (registered in __init__.py).
+Read-back sensors per day live in sensor.py.
 """
 
 from __future__ import annotations
@@ -47,15 +47,18 @@ TIME_PROGRAMS: tuple[tuple[str, str, int], ...] = (
     ("dhw", "dhw", TIME_PROG_DHW_ID),
 )
 
+# JS Date.getDay() order: 0=Sunday .. 6=Saturday; display Mon..Sun
+DAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 0)
+
 
 def _prog_data(data: Any, prog_id: int) -> Any:
     return data.time_progs.get(prog_id)
 
 
-def _blocks_from_prog(prog_data: Any, day: int = 1) -> list[tuple[int, int]]:
+def _blocks_from_prog(prog_data: Any, day: int) -> list[tuple[int, int]]:
     """Extract comfort blocks (start, end minutes) from a program's plan
-    for one day (default Monday = JS day 1). Merges the day's slices across
-    all plan entries (the gateway may split one day over several plans)."""
+    for one day. Merges the day's slices across all plan entries (the
+    gateway may split one day over several plans)."""
     weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
     allowed = weekly.get("allowedTemp") or [0, 1]
     if 1 not in allowed:
@@ -92,7 +95,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Elco time entities — one start/end pair per program."""
+    """Set up Elco time entities — one start/end pair per program per day."""
     coordinator: ElcoRemoconCoordinator = hass.data[DOMAIN][entry.entry_id]
     if not coordinator.client.is_flat_api:
         _LOGGER.info(
@@ -104,16 +107,18 @@ async def async_setup_entry(
     zone = entry.data.get(CONF_ZONE, DEFAULT_ZONE)
 
     entities = [
-        ElcoScheduleTime(coordinator, gw_id, zone, prefix, translation_prefix, prog, part)
+        ElcoScheduleTime(coordinator, gw_id, zone, prefix, translation_prefix, prog, day, part)
         for prefix, translation_prefix, prog in TIME_PROGRAMS
         if _prog_data(coordinator.data, prog) is not None
+        for day in DAYS
         for part in ("start", "end")
     ]
     async_add_entities(entities)
 
 
 class ElcoScheduleTime(CoordinatorEntity[ElcoRemoconCoordinator], TimeEntity):
-    """Writable start/end of a program's first (block 1) comfort window."""
+    """Writable start/end of a program's first (block 1) comfort window
+    for one specific weekday."""
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
@@ -126,13 +131,15 @@ class ElcoScheduleTime(CoordinatorEntity[ElcoRemoconCoordinator], TimeEntity):
         prefix: str,
         translation_prefix: str,
         prog_id: int,
+        day: int,  # JS Date.getDay(): 0=Sunday .. 6=Saturday
         part: str,  # "start" | "end"
     ) -> None:
         super().__init__(coordinator)
         self._prog_id = prog_id
+        self._day = day
         self._part = part
-        key = f"schedule_{prefix}_{part}"
-        self._attr_translation_key = f"schedule_{translation_prefix}_{part}"
+        key = f"schedule_{prefix}_d{day}_{part}"
+        self._attr_translation_key = f"schedule_{translation_prefix}_day{day}_{part}"
         self._attr_unique_id = entity_unique_id(gw_id, zone, key)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, gw_id)},
@@ -143,22 +150,22 @@ class ElcoScheduleTime(CoordinatorEntity[ElcoRemoconCoordinator], TimeEntity):
 
     @property
     def native_value(self) -> dt_time | None:
-        """Current read-back value of block 1's start/end."""
+        """Current read-back value of this day's block 1 start/end."""
         prog_data = _prog_data(self.coordinator.data, self._prog_id)
         if prog_data is None:
             return None
-        blocks = _blocks_from_prog(prog_data)
+        blocks = _blocks_from_prog(prog_data, self._day)
         if not blocks:
             return None
         start, end = blocks[0]
         return _minutes_to_time(start if self._part == "start" else end)
 
     async def async_set_value(self, value: dt_time) -> None:
-        """Write block 1's start/end and apply it to the whole week."""
+        """Write this day's block 1 start/end, changing only that day."""
         prog_data = _prog_data(self.coordinator.data, self._prog_id)
         if prog_data is None:
             raise ValueError("Time program is not available on this gateway")
-        blocks = _blocks_from_prog(prog_data) or [(0, 0)]
+        blocks = _blocks_from_prog(prog_data, self._day) or [(0, 0)]
         minutes = value.hour * 60 + value.minute
         start, end = blocks[0]
         if self._part == "start":
@@ -167,6 +174,6 @@ class ElcoScheduleTime(CoordinatorEntity[ElcoRemoconCoordinator], TimeEntity):
             end = minutes
         hhmm = (RemoconClient._minutes_to_str(start), RemoconClient._minutes_to_str(end))
         await self.hass.async_add_executor_job(
-            self.coordinator.client.set_time_prog_week, self._prog_id, [hhmm]
+            self.coordinator.client.set_time_prog_slice, self._prog_id, self._day, *hhmm
         )
         await self.coordinator.async_request_refresh()

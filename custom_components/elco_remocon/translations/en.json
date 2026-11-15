@@ -140,29 +140,173 @@
       }
     },
     "time": {
-      "schedule_heating_z1_start": {
-        "name": "Heating Zone 1 Start"
+      "schedule_heating_z1_day0_start": {
+        "name": "Heating Zone 1 Sunday Start"
       },
-      "schedule_heating_z1_end": {
-        "name": "Heating Zone 1 End"
+      "schedule_heating_z1_day0_end": {
+        "name": "Heating Zone 1 Sunday End"
       },
-      "schedule_heating_z2_start": {
-        "name": "Heating Zone 2 Start"
+      "schedule_heating_z1_day1_start": {
+        "name": "Heating Zone 1 Monday Start"
       },
-      "schedule_heating_z2_end": {
-        "name": "Heating Zone 2 End"
+      "schedule_heating_z1_day1_end": {
+        "name": "Heating Zone 1 Monday End"
       },
-      "schedule_heating_z3_start": {
-        "name": "Heating Zone 3 Start"
+      "schedule_heating_z1_day2_start": {
+        "name": "Heating Zone 1 Tuesday Start"
       },
-      "schedule_heating_z3_end": {
-        "name": "Heating Zone 3 End"
+      "schedule_heating_z1_day2_end": {
+        "name": "Heating Zone 1 Tuesday End"
       },
-      "schedule_dhw_start": {
-        "name": "DHW Start"
+      "schedule_heating_z1_day3_start": {
+        "name": "Heating Zone 1 Wednesday Start"
       },
-      "schedule_dhw_end": {
-        "name": "DHW End"
+      "schedule_heating_z1_day3_end": {
+        "name": "Heating Zone 1 Wednesday End"
+      },
+      "schedule_heating_z1_day4_start": {
+        "name": "Heating Zone 1 Thursday Start"
+      },
+      "schedule_heating_z1_day4_end": {
+        "name": "Heating Zone 1 Thursday End"
+      },
+      "schedule_heating_z1_day5_start": {
+        "name": "Heating Zone 1 Friday Start"
+      },
+      "schedule_heating_z1_day5_end": {
+        "name": "Heating Zone 1 Friday End"
+      },
+      "schedule_heating_z1_day6_start": {
+        "name": "Heating Zone 1 Saturday Start"
+      },
+      "schedule_heating_z1_day6_end": {
+        "name": "Heating Zone 1 Saturday End"
+      },
+      "schedule_heating_z2_day0_start": {
+        "name": "Heating Zone 2 Sunday Start"
+      },
+      "schedule_heating_z2_day0_end": {
+        "name": "Heating Zone 2 Sunday End"
+      },
+      "schedule_heating_z2_day1_start": {
+        "name": "Heating Zone 2 Monday Start"
+      },
+      "schedule_heating_z2_day1_end": {
+        "name": "Heating Zone 2 Monday End"
+      },
+      "schedule_heating_z2_day2_start": {
+        "name": "Heating Zone 2 Tuesday Start"
+      },
+      "schedule_heating_z2_day2_end": {
+        "name": "Heating Zone 2 Tuesday End"
+      },
+      "schedule_heating_z2_day3_start": {
+        "name": "Heating Zone 2 Wednesday Start"
+      },
+      "schedule_heating_z2_day3_end": {
+        "name": "Heating Zone 2 Wednesday End"
+      },
+      "schedule_heating_z2_day4_start": {
+        "name": "Heating Zone 2 Thursday Start"
+      },
+      "schedule_heating_z2_day4_end": {
+        "name": "Heating Zone 2 Thursday End"
+      },
+      "schedule_heating_z2_day5_start": {
+        "name": "Heating Zone 2 Friday Start"
+      },
+      "schedule_heating_z2_day5_end": {
+        "name": "Heating Zone 2 Friday End"
+      },
+      "schedule_heating_z2_day6_start": {
+        "name": "Heating Zone 2 Saturday Start"
+      },
+      "schedule_heating_z2_day6_end": {
+        "name": "Heating Zone 2 Saturday End"
+      },
+      "schedule_heating_z3_day0_start": {
+        "name": "Heating Zone 3 Sunday Start"
+      },
+      "schedule_heating_z3_day0_end": {
+        "name": "Heating Zone 3 Sunday End"
+      },
+      "schedule_heating_z3_day1_start": {
+        "name": "Heating Zone 3 Monday Start"
+      },
+      "schedule_heating_z3_day1_end": {
+        "name": "Heating Zone 3 Monday End"
+      },
+      "schedule_heating_z3_day2_start": {
+        "name": "Heating Zone 3 Tuesday Start"
+      },
+      "schedule_heating_z3_day2_end": {
+        "name": "Heating Zone 3 Tuesday End"
+      },
+      "schedule_heating_z3_day3_start": {
+        "name": "Heating Zone 3 Wednesday Start"
+      },
+      "schedule_heating_z3_day3_end": {
+        "name": "Heating Zone 3 Wednesday End"
+      },
+      "schedule_heating_z3_day4_start": {
+        "name": "Heating Zone 3 Thursday Start"
+      },
+      "schedule_heating_z3_day4_end": {
+        "name": "Heating Zone 3 Thursday End"
+      },
+      "schedule_heating_z3_day5_start": {
+        "name": "Heating Zone 3 Friday Start"
+      },
+      "schedule_heating_z3_day5_end": {
+        "name": "Heating Zone 3 Friday End"
+      },
+      "schedule_heating_z3_day6_start": {
+        "name": "Heating Zone 3 Saturday Start"
+      },
+      "schedule_heating_z3_day6_end": {
+        "name": "Heating Zone 3 Saturday End"
+      },
+      "schedule_dhw_day0_start": {
+        "name": "DHW Sunday Start"
+      },
+      "schedule_dhw_day0_end": {
+        "name": "DHW Sunday End"
+      },
+      "schedule_dhw_day1_start": {
+        "name": "DHW Monday Start"
+      },
+      "schedule_dhw_day1_end": {
+        "name": "DHW Monday End"
+      },
+      "schedule_dhw_day2_start": {
+        "name": "DHW Tuesday Start"
+      },
+      "schedule_dhw_day2_end": {
+        "name": "DHW Tuesday End"
+      },
+      "schedule_dhw_day3_start": {
+        "name": "DHW Wednesday Start"
+      },
+      "schedule_dhw_day3_end": {
+        "name": "DHW Wednesday End"
+      },
+      "schedule_dhw_day4_start": {
+        "name": "DHW Thursday Start"
+      },
+      "schedule_dhw_day4_end": {
+        "name": "DHW Thursday End"
+      },
+      "schedule_dhw_day5_start": {
+        "name": "DHW Friday Start"
+      },
+      "schedule_dhw_day5_end": {
+        "name": "DHW Friday End"
+      },
+      "schedule_dhw_day6_start": {
+        "name": "DHW Saturday Start"
+      },
+      "schedule_dhw_day6_end": {
+        "name": "DHW Saturday End"
       }
     }
   },

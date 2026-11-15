@@ -496,18 +496,20 @@ def test_schedule_sensor_state_and_attributes(platforms):
     assert attrs["timeline"][68] == "reduced"   # 17:00
 
 
-def test_time_entities_created_per_program(platforms):
+def test_time_entities_created_per_program_per_day(platforms):
     state = setup_entities(platforms, _schedule_data(), flat_api=True)
-    # one start/end pair per writable program (z1 + dhw); buffer progIds 4-6
-    # are read-only (SetTimeProg rejects them) -> no buffer time entities.
-    # Per-day/multi-block schedules go through the set_time_program service.
-    assert len(state.times) == 2 * 2
+    # one start/end pair per writable program (z1 + dhw) PER DAY (7 days);
+    # buffer progIds 4-6 are read-only (SetTimeProg rejects them).
+    assert len(state.times) == 2 * 2 * 7
     assert not any("buffer" in t._attr_unique_id for t in state.times)
     starts = [t for t in state.times if t._part == "start" and "dhw" in t._attr_unique_id]
-    assert len(starts) == 1
-    assert starts[0].native_value.hour == 6 and starts[0].native_value.minute == 0
+    assert len(starts) == 7
+    days = {t._day for t in starts}
+    assert days == {0, 1, 2, 3, 4, 5, 6}
+    mon_start = next(t for t in starts if t._day == 1)
+    assert mon_start.native_value.hour == 6 and mon_start.native_value.minute == 0
     ends = [t for t in state.times if t._part == "end" and "dhw" in t._attr_unique_id]
-    assert ends[0].native_value.hour == 17
+    assert next(t for t in ends if t._day == 1).native_value.hour == 17
 
 
 def test_time_entities_absent_without_flat_api(platforms):
@@ -515,13 +517,13 @@ def test_time_entities_absent_without_flat_api(platforms):
     assert state.times == []
 
 
-def test_time_entity_write_calls_set_time_prog_week(platforms):
+def test_time_entity_write_calls_set_time_prog_slice_for_its_day(platforms):
     from datetime import time as dt_time
     state = setup_entities(platforms, _schedule_data(), flat_api=True)
     written = []
     state.coordinator.client = types.SimpleNamespace(
         is_flat_api=True,
-        set_time_prog_week=lambda prog, blocks: written.append((prog, blocks)),
+        set_time_prog_slice=lambda prog, day, start, end: written.append((prog, day, start, end)),
     )
 
     async def add_executor_job(fn, *args):
@@ -530,13 +532,24 @@ def test_time_entity_write_calls_set_time_prog_week(platforms):
     state.hass.async_add_executor_job = add_executor_job
     state.coordinator.async_request_refresh = lambda: asyncio.sleep(0)
 
+    # Wednesday (day 3) end entity: write 18:30 -> only day 3 changes
     end_entity = next(
         t for t in state.times
-        if "schedule_dhw_end" in t._attr_unique_id
+        if "schedule_dhw_d3_end" in t._attr_unique_id
     )
     end_entity.hass = state.hass
     asyncio.run(end_entity.async_set_value(dt_time(18, 30)))
-    assert written == [(7, [("06:00", "18:30")])]
+    assert written == [(7, 3, "06:00", "18:30")]
+
+    # Sunday (day 0) start entity: write 05:15 -> only day 0 changes
+    written.clear()
+    start_entity = next(
+        t for t in state.times
+        if "schedule_dhw_d0_start" in t._attr_unique_id
+    )
+    start_entity.hass = state.hass
+    asyncio.run(start_entity.async_set_value(dt_time(5, 15)))
+    assert written == [(7, 0, "05:15", "17:00")]
 
 
 # ----------------------------------------------------------------------
@@ -704,3 +717,11 @@ def test_schedule_sensor_reads_flat_plan_level_shape(platforms):
 def test_blocks_from_prog_reads_flat_plan_level_shape(platforms):
     from custom_components.elco_remocon.time import _blocks_from_prog
     assert _blocks_from_prog(FLAT_PLAN_PROG, day=1) == [(390, 1320)]
+
+
+def test_blocks_from_prog_per_day_flat_shape(platforms):
+    # flat plan covers all days with one slice set; per-day extraction must
+    # return the same block for each day and [] for days not in the plan
+    from custom_components.elco_remocon.time import _blocks_from_prog
+    for d in (1, 2, 3, 4, 5, 6, 0):
+        assert _blocks_from_prog(FLAT_PLAN_PROG, day=d) == [(390, 1320)]
