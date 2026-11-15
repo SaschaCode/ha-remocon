@@ -29,6 +29,7 @@ from .api import (
     TIME_PROG_HEATING_IDS,
     RemoconClient,
     _int_or,
+    iter_plan_days,
 )
 from .const import CONF_ZONE, DEFAULT_ZONE, DOMAIN
 from .coordinator import ElcoRemoconCoordinator
@@ -62,15 +63,9 @@ def _blocks_from_prog(prog_data: Any, day: int = 1) -> list[tuple[int, int]]:
     comfort_idx = allowed.index(1)
     slices: list[dict[str, Any]] = []
     for plan in weekly.get("plans") or []:
-        if not isinstance(plan, dict):
-            continue
-        for plan_day in plan.get("days") or []:
-            if not isinstance(plan_day, dict):
-                continue
-            if _int_or(plan_day.get("day"), -1) == day:
-                raw = plan_day.get("slices")
-                if isinstance(raw, list):
-                    slices.extend(s for s in raw if isinstance(s, dict))
+        for day_num, raw in iter_plan_days(plan):
+            if day_num == day:
+                slices.extend(s for s in raw if isinstance(s, dict))
     try:
         slices = sorted(slices, key=lambda s: _int_or(s.get("from"), 0))
     except (TypeError, ValueError):

@@ -2068,3 +2068,36 @@ def test_set_time_prog_slice_fills_missing_days():
     plans = posted["json"]["timeProg"]["weeklyPlan"]["plans"]
     all_days = {d["day"] for p in plans for d in p["days"]}
     assert all_days == set(range(7))  # all 7 days present after regroup
+
+
+
+def test_iter_plan_days_handles_flat_plan_level_shape():
+    from custom_components.elco_remocon.api import iter_plan_days
+    plan = {"days": [1, 0], "slices": [{"from": 0, "temp": 0}]}
+    assert dict(iter_plan_days(plan)) == {1: [{"from": 0, "temp": 0}], 0: [{"from": 0, "temp": 0}]}
+
+
+def test_iter_plan_days_handles_per_day_dict_shape():
+    from custom_components.elco_remocon.api import iter_plan_days
+    plan = {"days": [{"day": 3, "slices": [{"from": 60, "temp": 1}]}]}
+    assert list(iter_plan_days(plan)) == [(3, [{"from": 60, "temp": 1}])]
+
+
+def test_set_time_prog_slice_maxswitches_zero_is_allowed():
+    # Live gateway reports maxSwitches: 0 but accepts writes.
+    client = _flat_client()
+    posted = {}
+    with patch.object(client, "_request") as mock_request:
+        def router(method, path, **kwargs):
+            if "SetTimeProg" in path:
+                posted["json"] = kwargs["json"]
+                return {"ok": True}
+            return _timeprog_response({
+                "timeProg": {"progId": 7, "weeklyPlan": {
+                    "allowedTemp": [0, 1], "maxSwitches": 0,
+                    "plans": [{"days": [1, 2, 3, 4, 5, 6, 0],
+                               "slices": [{"from": 0, "temp": 0}, {"from": 405, "temp": 1}, {"from": 1320, "temp": 0}]}]},
+                }})
+        mock_request.side_effect = router
+        client.set_time_prog_slice(7, 1, "06:45", "22:00")
+    assert posted["json"]["timeProg"]["progId"] == 7

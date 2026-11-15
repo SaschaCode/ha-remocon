@@ -672,3 +672,35 @@ def test_time_blocks_merge_day_split_across_plans(platforms):
     from custom_components.elco_remocon.time import _blocks_from_prog
     blocks = _blocks_from_prog(SPLIT_DAY_PROG, day=1)
     assert blocks == [(360, 1020)]
+
+
+# --- flat plan-level shape (live gateway: days: [ints], slices at plan level) ---
+FLAT_PLAN_PROG = {
+    "timeProg": {
+        "weeklyPlan": {
+            "allowedTemp": [0, 1],
+            "maxSwitches": 0,
+            "plans": [
+                {"days": [1, 2, 3, 4, 5, 6, 0],
+                 "slices": [{"from": 0, "temp": 0}, {"from": 390, "temp": 1}, {"from": 1320, "temp": 0}]},
+            ],
+        }
+    }
+}
+
+
+def test_schedule_sensor_reads_flat_plan_level_shape(platforms):
+    from custom_components.elco_remocon.sensor import _prog_week_map, _prog_day_slices
+    week = _prog_week_map(FLAT_PLAN_PROG)
+    assert week["mon"] == [
+        {"from": "00:00", "temp": 0},
+        {"from": "06:30", "temp": 1},
+        {"from": "22:00", "temp": 0},
+    ]
+    assert week["sun"] == week["mon"]
+    assert len(_prog_day_slices(FLAT_PLAN_PROG, 3)) == 3
+
+
+def test_blocks_from_prog_reads_flat_plan_level_shape(platforms):
+    from custom_components.elco_remocon.time import _blocks_from_prog
+    assert _blocks_from_prog(FLAT_PLAN_PROG, day=1) == [(390, 1320)]

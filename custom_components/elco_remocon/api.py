@@ -188,6 +188,25 @@ def _int_or(value: Any, default: int) -> int:
         return default
 
 
+def iter_plan_days(plan: Any):
+    """Yield (day_num, slices) for one weeklyPlan entry, tolerating both
+    shapes the gateway uses: ``{"days": [{"day": N, "slices": [...]}]}`` and
+    the flat ``{"days": [N, ...], "slices": [...]}`` (plan-level slices)."""
+    plan_d = _as_dict(plan)
+    days = plan_d.get("days") or []
+    plan_slices = plan_d.get("slices")
+    for entry in days:
+        if isinstance(entry, dict):
+            day_num = _int_or(entry.get("day"), -1)
+            slices = entry.get("slices")
+            if slices is None:
+                slices = plan_slices
+            yield day_num, slices if isinstance(slices, list) else []
+        else:
+            day_num = _int_or(entry, -1)
+            yield day_num, plan_slices if isinstance(plan_slices, list) else []
+
+
 class RemoconApiError(Exception):
     """Base exception for API errors."""
 
@@ -1172,7 +1191,11 @@ class RemoconClient:
             raise RemoconDataError("Gateway program has no comfort temperature level")
         reduced_idx = allowed_temp.index(0) if 0 in allowed_temp else 0
         comfort_idx = allowed_temp.index(1)
-        max_switches = int(weekly.get("maxSwitches") or 6)
+        max_switches = _int_or(weekly.get("maxSwitches"), 6)
+        if max_switches <= 0:
+            # Live gateways report maxSwitches: 0 even though they accept
+            # writes; 0 must not be treated as "no switches allowed".
+            max_switches = 6
         # 3 slices = 2 switches for a single comfort block; the web UI pads
         # with a trailing reduced slice when maxSwitches allows more.
         if 2 > max_switches:
@@ -1187,12 +1210,8 @@ class RemoconClient:
         ]
         day_slices: dict[int, list[dict[str, Any]]] = {}
         for plan in weekly.get("plans") or []:
-            for plan_day in _as_dict(plan).get("days") or []:
-                try:
-                    day_num = _int_or(_as_dict(plan_day).get("day"), -1)
-                except (TypeError, ValueError):
-                    continue
-                day_slices[day_num] = _as_dict(plan_day).get("slices") or []
+            for day_num, slices in iter_plan_days(plan):
+                day_slices[day_num] = [s for s in slices if isinstance(s, dict)]
         day_slices[day] = new_slices
         # Ensure every weekday has an entry, even if the gateway's plan
         # omitted it (KeyError otherwise when regrouping).
@@ -1238,10 +1257,10 @@ class RemoconClient:
             verified = self.get_time_prog(prog_id)
             if verified is not None:
                 for plan in _as_dict(verified["timeProg"]["weeklyPlan"]).get("plans") or []:
-                    for plan_day in _as_dict(plan).get("days") or []:
-                        if _int_or(_as_dict(plan_day).get("day"), -1) == day:
+                    for day_num, slices in iter_plan_days(plan):
+                        if day_num == day:
                             got = [(_as_dict(s).get("from"), _as_dict(s).get("temp"))
-                                   for s in (_as_dict(plan_day).get("slices") or [])]
+                                   for s in slices]
                             want = [(s["from"], s["temp"]) for s in new_slices]
                             if got == want:
                                 self._last_time_progs[prog_id] = verified
@@ -1292,7 +1311,11 @@ class RemoconClient:
             raise RemoconDataError("Gateway program has no comfort temperature level")
         reduced_idx = allowed_temp.index(0) if 0 in allowed_temp else 0
         comfort_idx = allowed_temp.index(1)
-        max_switches = int(weekly.get("maxSwitches") or 6)
+        max_switches = _int_or(weekly.get("maxSwitches"), 6)
+        if max_switches <= 0:
+            # Live gateways report maxSwitches: 0 even though they accept
+            # writes; 0 must not be treated as "no switches allowed".
+            max_switches = 6
         if 2 * len(parsed) > max_switches:
             raise RemoconDataError(
                 f"{len(parsed)} blocks need {2 * len(parsed)} switches, "
@@ -1330,15 +1353,10 @@ class RemoconClient:
                 seen_days: set[int] = set()
                 ok = True
                 for plan in _as_dict(verified["timeProg"]["weeklyPlan"]).get("plans") or []:
-                    for plan_day in _as_dict(plan).get("days") or []:
-                        try:
-                            day_num = _int_or(_as_dict(plan_day).get("day"), -1)
-                        except (TypeError, ValueError):
-                            ok = False
-                            continue
+                    for day_num, slices in iter_plan_days(plan):
                         seen_days.add(day_num)
                         got = [(_as_dict(s).get("from"), _as_dict(s).get("temp"))
-                               for s in (_as_dict(plan_day).get("slices") or [])]
+                               for s in slices]
                         if got != want:
                             ok = False
                 if ok and seen_days == set(range(7)):

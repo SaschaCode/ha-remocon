@@ -34,6 +34,7 @@ from .api import (
     TIME_PROG_HEATING_IDS,
     RemoconData,
     _int_or,
+    iter_plan_days,
 )
 from .const import CONF_ZONE, DEFAULT_ZONE, DOMAIN
 from .coordinator import ElcoRemoconCoordinator
@@ -299,22 +300,15 @@ SENSORS: tuple[ElcoSensorDescription, ...] = (
 def _prog_day_slices(prog_data: Any, day: int) -> list[dict[str, Any]]:
     """Return the slices of one day across all plan entries of a program.
 
-    Days may appear in several plan entries (the gateway splits them); merge
-    them so a day split across plans is not read as empty.
+    Tolerates both gateway shapes: per-day dicts (``days: [{day, slices}]``)
+    and flat plan-level entries (``days: [N,...], slices: [...]``).
     """
     weekly = (prog_data.get("timeProg") or {}).get("weeklyPlan") or {}
     merged: list[dict[str, Any]] = []
     for plan in weekly.get("plans") or []:
-        for plan_day in (plan.get("days") if isinstance(plan, dict) else None) or []:
-            if not isinstance(plan_day, dict):
-                continue
-            try:
-                if _int_or(plan_day.get("day"), -1) == day:
-                    slices = plan_day.get("slices")
-                    if isinstance(slices, list):
-                        merged.extend(s for s in slices if isinstance(s, dict))
-            except (TypeError, ValueError):
-                continue
+        for day_num, slices in iter_plan_days(plan):
+            if day_num == day:
+                merged.extend(s for s in slices if isinstance(s, dict))
     return merged
 
 
