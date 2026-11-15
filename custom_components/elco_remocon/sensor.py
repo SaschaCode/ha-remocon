@@ -386,7 +386,7 @@ async def async_setup_entry(
         # Per-day read-back sensors for the writable programs (day 0=Sunday..6=Saturday).
         day_progs = SCHEDULE_PROGRAMS[:4]  # heating_z1..3 + dhw (buffer stays read-only weekly)
         entities.extend(
-            ElcoScheduleDaySensor(coordinator, gw_id, zone, key.split("_", 1)[1], translation_key.split("_", 1)[1], prog, day)
+            ElcoScheduleDaySensor(coordinator, gw_id, zone, key.split("_", 1)[1], translation_key.split("_", 1)[1], prog if isinstance(prog, int) else prog[0], day)
             for key, translation_key, prog, exists in day_progs
             if exists(coordinator.data)
             for day in range(7)
