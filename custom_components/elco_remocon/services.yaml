@@ -1,0 +1,50 @@
+set_time_program:
+  name: Set time program
+  description: >-
+    Sets a comfort time window for a heat pump program (DHW or heating zone),
+    optionally for a single weekday only. The write is verified by reading the
+    program back from the gateway.
+  fields:
+    program:
+      name: Program
+      description: Which time program to change.
+      required: true
+      selector:
+        select:
+          options:
+            - dhw
+            - heating_z1
+            - heating_z2
+            - heating_z3
+    day:
+      name: Day
+      description: Weekday to change. Leave empty to apply to the whole week.
+      required: false
+      selector:
+        select:
+          options:
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+            - sunday
+    comfort_start:
+      name: Comfort start
+      description: Start of the comfort window (HH:MM). Required unless blocks is given.
+      required: false
+      selector:
+        time:
+    comfort_end:
+      name: Comfort end
+      description: End of the comfort window (HH:MM). Required unless blocks is given.
+      required: false
+      selector:
+        time:
+    blocks:
+      name: Blocks
+      description: Multiple comfort windows for the whole week, e.g. [["06:00","08:00"],["17:00","22:00"]]. Cannot be combined with day.
+      required: false
+      selector:
+        object:
